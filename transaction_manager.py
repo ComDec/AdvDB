@@ -278,33 +278,6 @@ class TransactionManager:
 
         return False  # 无冲突
 
-    def _check_rw_conflict(self, transaction: Transaction) -> bool:
-        """
-        检查RW冲突（读-写冲突）
-
-        SSI验证：检测"危险结构"或RW依赖
-
-        Args:
-            transaction: 要检查的事务
-
-        Returns:
-            True表示有冲突（应中止），False表示无冲突
-        """
-        for committed_tx in self.committed_transactions:
-            # 只检查在T开始后提交的事务
-            if committed_tx.commit_timestamp > transaction.start_timestamp:
-                # 检查1：committed_tx是否写入了T读取过的内容？
-                read_write_intersection = transaction.read_set & set(committed_tx.write_set.keys())
-                if read_write_intersection:
-                    return True  # 发现RW冲突
-
-                # 检查2：committed_tx是否读取了T写入的内容？
-                write_read_intersection = set(transaction.write_set.keys()) & committed_tx.read_set
-                if write_read_intersection:
-                    return True  # 发现RW冲突
-
-        return False  # 无冲突
-
     # ==================== 提交和中止 ====================
 
     def _commit_transaction(self, transaction: Transaction):
