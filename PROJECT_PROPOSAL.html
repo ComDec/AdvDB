@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>RepCRec Project Proposal</title>
-
+    
     <style>
         @page {
             size: A4;
@@ -201,6 +201,24 @@
             page-break-after: always;
         }
 
+        /* Mermaid diagram styling */
+        .mermaid {
+            background-color: #f8f8f8;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 15px;
+            margin: 1.5em 0;
+            text-align: center;
+            page-break-inside: avoid;
+            min-height: 200px;
+            overflow: visible;
+        }
+
+        .mermaid svg {
+            max-width: 100%;
+            height: auto;
+        }
+
         /* Print-specific adjustments */
         @media print {
             body {
@@ -218,200 +236,286 @@
             h3 {
                 font-size: 14pt;
             }
+
+            .mermaid {
+                page-break-inside: avoid;
+            }
         }
     </style>
-
+    
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+    <script>
+        mermaid.initialize({ startOnLoad: true, theme: 'default', 
+            flowchart: { 
+                useMaxWidth: true,
+                htmlLabels: true,
+                curve: 'basis'
+            },
+            themeVariables: {
+                primaryColor: '#2c5aa0',
+                primaryTextColor: '#fff',
+                primaryBorderColor: '#1a4480',
+                lineColor: '#2c5aa0',
+                secondaryColor: '#f0f0f0',
+                tertiaryColor: '#ffffff'
+            }
+        });
+    </script>
 </head>
 <body>
     <h1 id="repcrec-replicated-concurrency-control-and-recovery-system">RepCRec: Replicated Concurrency Control and Recovery System</h1>
-<p><strong>Project Proposal for Advanced Database Systems</strong></p>
+<p><strong>Advanced Database Systems Project</strong></p>
 <hr />
 <h2 id="executive-summary">Executive Summary</h2>
-<p>RepCRec is a distributed replicated database system that implements sophisticated concurrency control and recovery mechanisms. The system provides <strong>Serializable Snapshot Isolation (SSI)</strong> with <strong>Multi-Version Concurrency Control (MVCC)</strong> across 10 distributed data sites, managing 20 variables with selective replication. The implementation demonstrates key distributed database concepts including the <strong>Available Copies algorithm</strong>, optimistic concurrency control, and fault-tolerant recovery protocols.</p>
+<p>RepCRec is a distributed replicated database system implementing <strong>Serializable Snapshot Isolation (SSI)</strong> with <strong>Multi-Version Concurrency Control (MVCC)</strong> across 10 distributed sites. The system manages 20 variables with selective replication, demonstrating key distributed database concepts including the <strong>Available Copies algorithm</strong>, optimistic concurrency control, and fault-tolerant recovery.</p>
+<p><strong>Key Features</strong>:
+- Serializable consistency guarantees
+- MVCC for lock-free reads
+- Replicated data with failure tolerance
+- Optimistic concurrency control</p>
 <hr />
-<h2 id="1-project-overview">1. Project Overview</h2>
-<h3 id="11-system-architecture">1.1 System Architecture</h3>
-<p>The RepCRec system consists of four core components:</p>
-<ol>
-<li><strong>TransactionManager (TM)</strong>: A centralized, fail-safe coordinator that manages all transactions, maintains global state, and enforces consistency</li>
-<li><strong>Site</strong>: 10 distributed data sites that store variable replicas and can independently fail and recover</li>
-<li><strong>Transaction</strong>: Transaction objects tracking read/write sets, timestamps, and lifecycle status</li>
-<li><strong>VariableCopy</strong>: MVCC-enabled variable copies maintaining version histories</li>
-</ol>
-<h3 id="12-data-distribution-model">1.2 Data Distribution Model</h3>
+<h2 id="1-system-architecture">1. System Architecture</h2>
+<h3 id="11-components">1.1 Components</h3>
+<div class="mermaid" id="mermaid-f7bece1a">
+graph TB
+    TM[TransactionManager&lt;br/&gt;Centralized Coordinator]
+    S1[Site 1]
+    S2[Site 2]
+    S3[Site ...]
+    S10[Site 10]
+
+    TM --&gt;|Manage| S1
+    TM --&gt;|Manage| S2
+    TM --&gt;|Manage| S3
+    TM --&gt;|Manage| S10
+
+    T1[Transaction T1]
+    T2[Transaction T2]
+
+    T1 --&gt;|Submit| TM
+    T2 --&gt;|Submit| TM
+
+    style TM fill:#ff9999
+    style S1 fill:#99ccff
+    style S2 fill:#99ccff
+    style S3 fill:#99ccff
+    style S10 fill:#99ccff
+</div>
+
+<p><strong>Core Components</strong>:
+1. <strong>TransactionManager (TM)</strong>: Centralized coordinator managing transactions and enforcing consistency
+2. <strong>Site</strong>: 10 distributed data sites storing variable replicas
+3. <strong>Transaction</strong>: Tracks read/write sets, timestamps, and status
+4. <strong>VariableCopy</strong>: MVCC-enabled copies maintaining version histories</p>
+<h3 id="12-data-distribution">1.2 Data Distribution</h3>
 <ul>
-<li><strong>Variables</strong>: 20 variables (x1 through x20) with initial value 10*i for variable xi</li>
+<li><strong>Variables</strong>: 20 variables (x1-x20), initial value = 10×i for xi</li>
 <li><strong>Replication Strategy</strong>:</li>
-<li><strong>Odd-indexed variables</strong> (x1, x3, ..., x19): Non-replicated, stored at site 1 + (i mod 10)</li>
-<li><strong>Even-indexed variables</strong> (x2, x4, ..., x20): Fully replicated across all 10 sites</li>
+<li><strong>Odd variables</strong> (x1, x3, ..., x19): Non-replicated, stored at site <code>1 + (i mod 10)</code></li>
+<li><strong>Even variables</strong> (x2, x4, ..., x20): Fully replicated across all 10 sites</li>
 </ul>
-<h3 id="13-design-philosophy">1.3 Design Philosophy</h3>
-<p>The system employs a <strong>centralized coordination model</strong> with a single, non-failing TransactionManager to simplify distributed consensus while maintaining strong consistency guarantees through optimistic concurrency control and MVCC.</p>
 <hr />
-<h2 id="2-core-algorithms-and-implementation">2. Core Algorithms and Implementation</h2>
-<h3 id="21-multi-version-concurrency-control-mvcc">2.1 Multi-Version Concurrency Control (MVCC)</h3>
-<p><strong>Objective</strong>: Enable concurrent transactions to read consistent snapshots without blocking writers.</p>
-<p><strong>Implementation Details</strong>:</p>
-<p>Each variable maintains a version history as a sorted list of <code>(commit_timestamp, value)</code> tuples. Transactions receive a start timestamp and read data as it existed at that moment.</p>
-<p><strong>Key Algorithm</strong> (<code>variable_copy.py::read_snapshot()</code>):</p>
+<h2 id="2-core-algorithms">2. Core Algorithms</h2>
+<h3 id="21-transaction-lifecycle">2.1 Transaction Lifecycle</h3>
+<div class="mermaid" id="mermaid-50c135ed">
+stateDiagram-v2
+    [*] --&gt; ACTIVE: begin(T)
+    ACTIVE --&gt; WAITING: Resource unavailable
+    WAITING --&gt; ACTIVE: Resource available
+    WAITING --&gt; ABORTED: Timeout/Failure
+    ACTIVE --&gt; COMMITTED: end(T) + Validation Pass
+    ACTIVE --&gt; ABORTED: end(T) + Conflict Detected
+    COMMITTED --&gt; [*]
+    ABORTED --&gt; [*]
+
+    note right of ACTIVE
+        Normal execution
+        Read/Write operations
+    end note
+
+    note right of WAITING
+        Blocked on unavailable
+        site or stale variable
+    end note
+</div>
+
+<h3 id="22-multi-version-concurrency-control-mvcc">2.2 Multi-Version Concurrency Control (MVCC)</h3>
+<p><strong>Objective</strong>: Enable concurrent reads without blocking writers using version snapshots.</p>
+<div class="mermaid" id="mermaid-93d72e4b">
+flowchart TD
+    Start([Transaction T starts&lt;br/&gt;start_ts = 5]) --&gt; Read[Read variable x]
+    Read --&gt; Check{Variable in&lt;br/&gt;write_set?}
+    Check --&gt;|Yes| ReturnWrite[Return write_set value]
+    Check --&gt;|No| GetVersions[Get version_history&lt;br/&gt;from site]
+    GetVersions --&gt; FindVersion{Find version where&lt;br/&gt;commit_ts &lt; start_ts}
+    FindVersion --&gt;|Found| ReturnValue[Return snapshot value]
+    FindVersion --&gt;|Not found| ReturnInitial[Return initial value]
+    ReturnWrite --&gt; End([Return value])
+    ReturnValue --&gt; End
+    ReturnInitial --&gt; End
+
+    style Start fill:#90EE90
+    style End fill:#90EE90
+</div>
+
+<p><strong>Key Algorithm</strong>:</p>
 <pre class="codehilite"><code class="language-python">def read_snapshot(self, snapshot_timestamp: int) -&gt; int:
     snapshot_value = self.version_history[0][1]  # Initial value
     for commit_ts, value in self.version_history:
         if commit_ts &lt; snapshot_timestamp:
             snapshot_value = value
         else:
-            break  # Stop at first version after snapshot time
+            break
     return snapshot_value
 </code></pre>
 
-<p><strong>Complexity</strong>: O(V) where V is the number of versions<br />
-<strong>Benefits</strong>:
-- Lock-free reads
-- Consistent snapshots
-- Read-your-own-writes semantics</p>
-<h3 id="22-serializable-snapshot-isolation-ssi">2.2 Serializable Snapshot Isolation (SSI)</h3>
-<p><strong>Objective</strong>: Provide serializability guarantees while maintaining the concurrency benefits of snapshot isolation.</p>
-<p><strong>Problem Addressed</strong>: Pure snapshot isolation allows anomalies like write skew. SSI detects dangerous structures in transaction dependencies.</p>
-<p><strong>Implementation</strong>: Two-layer validation at commit time using optimistic concurrency control.</p>
-<h4 id="layer-1-write-write-conflict-detection-first-committer-wins">Layer 1: Write-Write Conflict Detection (First Committer Wins)</h4>
-<p><strong>Algorithm</strong> (<code>transaction_manager.py::_check_ww_conflict()</code>):</p>
-<pre class="codehilite"><code class="language-python">def _check_ww_conflict(self, transaction: Transaction) -&gt; bool:
-    for committed_tx in self.committed_transactions:
-        if committed_tx.commit_timestamp &gt; transaction.start_timestamp:
-            write_intersection = (
-                set(transaction.write_set.keys()) &amp;
-                set(committed_tx.write_set.keys())
-            )
-            if write_intersection:
-                return True  # Conflict detected
-    return False
-</code></pre>
+<p><strong>Complexity</strong>: O(V) where V = number of versions</p>
+<h3 id="23-serializable-snapshot-isolation-ssi">2.3 Serializable Snapshot Isolation (SSI)</h3>
+<p><strong>Objective</strong>: Provide serializability while maintaining snapshot isolation benefits.</p>
+<div class="mermaid" id="mermaid-0d79caed">
+flowchart TD
+    Start([Transaction T calls end]) --&gt; CheckWW{Check Write-Write&lt;br/&gt;Conflict}
+    CheckWW --&gt;|Conflict| Abort1[ABORT T&lt;br/&gt;First Committer Wins]
+    CheckWW --&gt;|No Conflict| CheckRW{Check Read-Write&lt;br/&gt;Conflict}
+    CheckRW --&gt;|Conflict| Abort2[ABORT T&lt;br/&gt;Dangerous Structure]
+    CheckRW --&gt;|No Conflict| AssignTS[Assign commit_timestamp]
+    AssignTS --&gt; ApplyWrites[Apply writes to all&lt;br/&gt;available sites]
+    ApplyWrites --&gt; Commit[COMMIT T]
+    Abort1 --&gt; End([Complete])
+    Abort2 --&gt; End
+    Commit --&gt; End
 
-<p><strong>Rule</strong>: If transaction T2 commits after T1 starts, and both write to the same variable, T1 must abort when it tries to commit.</p>
-<p><strong>Complexity</strong>: O(T·W) where T is the number of committed transactions and W is the write set size</p>
-<h4 id="layer-2-read-write-conflict-detection">Layer 2: Read-Write Conflict Detection</h4>
-<p><strong>Algorithm</strong> (<code>transaction_manager.py::_check_rw_conflict()</code>):</p>
-<pre class="codehilite"><code class="language-python">def _check_rw_conflict(self, transaction: Transaction) -&gt; bool:
-    for committed_tx in self.committed_transactions:
-        if committed_tx.commit_timestamp &gt; transaction.start_timestamp:
-            # Check 1: Did committed_tx write what T read?
-            if transaction.read_set &amp; set(committed_tx.write_set.keys()):
-                return True
-            # Check 2: Did committed_tx read what T wrote?
-            if set(transaction.write_set.keys()) &amp; committed_tx.read_set:
-                return True
-    return False
-</code></pre>
+    style Start fill:#90EE90
+    style Abort1 fill:#FF6B6B
+    style Abort2 fill:#FF6B6B
+    style Commit fill:#51CF66
+    style End fill:#90EE90
+</div>
 
-<p><strong>Purpose</strong>: Detect dangerous structures that could lead to non-serializable executions.</p>
-<p><strong>Complexity</strong>: O(T·N) where T is committed transactions and N is the number of variables</p>
-<p><strong>Design Trade-off</strong>: Set intersection validation instead of dependency graph cycle detection reduces implementation complexity by ~90% while maintaining correctness.</p>
-<h3 id="23-available-copies-algorithm">2.3 Available Copies Algorithm</h3>
-<p><strong>Objective</strong>: Maintain consistency across replicated data despite site failures.</p>
-<p><strong>Strategy</strong>: "Read One, Write All Available" (ROWAA)</p>
-<h4 id="read-operations">Read Operations</h4>
-<p><strong>Non-replicated variables</strong>: Must read from the unique site hosting the variable. If that site is down, the transaction waits.</p>
-<p><strong>Replicated variables</strong>: Read from any available site where the variable is marked as readable.</p>
-<p><strong>Implementation</strong> (<code>transaction_manager.py::read()</code>):</p>
-<pre class="codehilite"><code class="language-python"># For replicated variables (even-indexed)
-target_site = None
-for site in self.sites:
-    if site.is_up():
-        variable_copy = site.get_variable(variable_id)
-        if variable_copy and variable_copy.is_readable:
-            target_site = site
-            break
-
-if target_site is None:
-    transaction.set_waiting(variable_id)
-</code></pre>
-
-<h4 id="write-operations">Write Operations</h4>
-<p><strong>Deferred Writes</strong>: Writes are buffered in the transaction's private workspace (<code>write_set</code>).</p>
-<p><strong>Commit-time Propagation</strong>: Upon successful commit, writes propagate to all available sites.</p>
-<p><strong>Implementation</strong> (<code>transaction_manager.py::_commit_transaction()</code>):</p>
-<pre class="codehilite"><code class="language-python">for variable_id, value in transaction.write_set.items():
-    if is_replicated(variable_id):
-        # Write to all available sites
-        for site in self.sites:
-            if site.is_up() and site.has_variable(variable_id):
-                site.write_variable(variable_id, commit_timestamp, value)
-</code></pre>
-
-<p><strong>Guarantees</strong>:
-- <strong>Consistency</strong>: All writes from a transaction are atomic
-- <strong>Availability</strong>: System continues operating with partial site failures
-- <strong>Partition Tolerance</strong>: Isolated sites can recover</p>
-<h3 id="24-failure-recovery-algorithm-stale-flag-protocol">2.4 Failure Recovery Algorithm (Stale Flag Protocol)</h3>
-<p><strong>Objective</strong>: Handle site failures and recoveries while maintaining data consistency.</p>
-<p><strong>Problem</strong>: After a site recovers, its replicated data may be stale if commits occurred while it was down.</p>
-<p><strong>Solution</strong>: Distinguish between replicated and non-replicated variables upon recovery.</p>
-<p><strong>Implementation</strong> (<code>data_site.py::recover()</code>):</p>
-<pre class="codehilite"><code class="language-python">def recover(self):
-    self.status = SiteStatus.UP
-    for variable_id, variable_copy in self.variables.items():
-        if variable_copy.is_replicated:
-            variable_copy.set_stale()  # Mark as unreadable
-        else:
-            variable_copy.set_readable()  # Immediately readable
-</code></pre>
-
-<p><strong>Rationale</strong>:
-- <strong>Non-replicated variables</strong>: Only one copy exists; it must be the current value
-- <strong>Replicated variables</strong>: May be stale; become readable only after receiving a new committed write</p>
-<p><strong>Recovery Process</strong>:</p>
+<p><strong>Validation Rules</strong>:</p>
 <ol>
-<li>Site marks status as UP</li>
-<li>Replicated variables marked <code>is_readable = False</code></li>
-<li>Non-replicated variables marked <code>is_readable = True</code></li>
-<li>When a transaction commits a write to a replicated variable, <code>is_readable</code> becomes <code>True</code></li>
+<li><strong>Write-Write Conflict</strong>: If T2 commits after T1 starts and both write to the same variable → T1 aborts</li>
+<li><strong>Read-Write Conflict</strong>: If T2 commits after T1 starts and:</li>
+<li>T2 wrote what T1 read, OR</li>
+<li>T2 read what T1 wrote
+   → T1 aborts</li>
 </ol>
-<p><strong>Transaction Impact</strong>:
-- Active transactions that accessed a failed site are aborted
-- Waiting transactions are awakened and retry their operations</p>
+<p><strong>Complexity</strong>: O(T·N) where T = committed transactions, N = variables</p>
+<h3 id="24-available-copies-algorithm-rowaa">2.4 Available Copies Algorithm (ROWAA)</h3>
+<p><strong>Strategy</strong>: "Read One, Write All Available"</p>
+<h4 id="read-operation-flow">Read Operation Flow</h4>
+<div class="mermaid" id="mermaid-00f44486">
+flowchart TD
+    Start([Read Request]) --&gt; CheckType{Variable type?}
+    CheckType --&gt;|Non-replicated| CheckSite{Site up?}
+    CheckType --&gt;|Replicated| FindSite[Find available site&lt;br/&gt;with readable copy]
+    CheckSite --&gt;|Yes| ReadSnapshot[Read snapshot&lt;br/&gt;at start_ts]
+    CheckSite --&gt;|No| Wait1[Set transaction&lt;br/&gt;WAITING]
+    FindSite --&gt; Found{Found readable&lt;br/&gt;site?}
+    Found --&gt;|Yes| ReadSnapshot
+    Found --&gt;|No| Wait2[Set transaction&lt;br/&gt;WAITING]
+    ReadSnapshot --&gt; Return[Return value]
+    Wait1 --&gt; End([End])
+    Wait2 --&gt; End
+    Return --&gt; End
+
+    style Start fill:#90EE90
+    style Wait1 fill:#FFD93D
+    style Wait2 fill:#FFD93D
+    style Return fill:#51CF66
+    style End fill:#90EE90
+</div>
+
+<h4 id="write-operation-flow">Write Operation Flow</h4>
+<div class="mermaid" id="mermaid-314357a6">
+flowchart TD
+    Start([Write Request]) --&gt; Buffer[Buffer write in&lt;br/&gt;transaction write_set]
+    Buffer --&gt; Commit{Transaction&lt;br/&gt;commits?}
+    Commit --&gt;|No| Abort[Discard write_set]
+    Commit --&gt;|Yes| CheckType{Variable type?}
+    CheckType --&gt;|Non-replicated| WriteOne[Write to unique site]
+    CheckType --&gt;|Replicated| WriteAll[Write to all&lt;br/&gt;available sites]
+    WriteOne --&gt; MarkReadable[Mark variable readable&lt;br/&gt;if replicated]
+    WriteAll --&gt; MarkReadable
+    MarkReadable --&gt; End([Complete])
+    Abort --&gt; End
+
+    style Start fill:#90EE90
+    style Buffer fill:#4DABF7
+    style WriteAll fill:#51CF66
+    style End fill:#90EE90
+</div>
+
+<h3 id="25-failure-recovery-stale-flag-protocol">2.5 Failure Recovery (Stale Flag Protocol)</h3>
+<div class="mermaid" id="mermaid-32a88331">
+flowchart TD
+    Start([Site recovers]) --&gt; MarkUP[Mark site status UP]
+    MarkUP --&gt; Iterate[Iterate variables]
+    Iterate --&gt; CheckRep{Variable&lt;br/&gt;replicated?}
+    CheckRep --&gt;|Yes| MarkStale[Mark is_readable = False&lt;br/&gt;Stale flag]
+    CheckRep --&gt;|No| MarkReadable[Mark is_readable = True&lt;br/&gt;Immediately usable]
+    MarkStale --&gt; NextVar{More&lt;br/&gt;variables?}
+    MarkReadable --&gt; NextVar
+    NextVar --&gt;|Yes| Iterate
+    NextVar --&gt;|No| AbortActive[Abort transactions&lt;br/&gt;that accessed failed site]
+    AbortActive --&gt; WakeWaiting[Wake waiting transactions]
+    WakeWaiting --&gt; End([Recovery complete])
+
+    style Start fill:#90EE90
+    style MarkStale fill:#FFD93D
+    style MarkReadable fill:#51CF66
+    style End fill:#90EE90
+</div>
+
+<p><strong>Recovery Logic</strong>:
+- <strong>Non-replicated variables</strong>: Immediately readable (only copy exists)
+- <strong>Replicated variables</strong>: Marked stale until next committed write updates them</p>
 <hr />
 <h2 id="3-system-features">3. System Features</h2>
 <h3 id="31-transaction-types">3.1 Transaction Types</h3>
-<p><strong>Read-Write Transactions</strong>:
-- Begin with <code>begin(T1)</code>
-- Maintain read and write sets
-- Subject to SSI validation
-- Commit timestamp assigned at commit time</p>
-<p><strong>Read-Only Transactions</strong>:
-- Begin with <code>beginRO(T1)</code>
-- Read from snapshot at start timestamp
-- No validation required
-- Immediate commit</p>
-<h3 id="32-transaction-state-machine">3.2 Transaction State Machine</h3>
-<pre class="codehilite"><code>ACTIVE → WAITING → ACTIVE/ABORTED
-  ↓         ↓
-COMMITTED  ABORTED
-</code></pre>
-
-<p><strong>States</strong>:
-- <strong>ACTIVE</strong>: Normal execution
-- <strong>WAITING</strong>: Blocked on unavailable resource
-- <strong>COMMITTED</strong>: Successfully committed
-- <strong>ABORTED</strong>: Rolled back due to conflict or failure</p>
-<h3 id="33-supported-operations">3.3 Supported Operations</h3>
-<p><strong>Transaction Operations</strong>:
-- <code>begin(T1)</code> - Start read-write transaction
-- <code>beginRO(T1)</code> - Start read-only transaction
-- <code>R(T1, x1)</code> - Read variable x1
-- <code>W(T1, x1, 100)</code> - Write value 100 to x1
-- <code>end(T1)</code> - Commit or abort transaction</p>
-<p><strong>Site Operations</strong>:
+<table>
+<thead>
+<tr>
+<th>Type</th>
+<th>Command</th>
+<th>Validation</th>
+<th>Commit</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Read-Write</strong></td>
+<td><code>begin(T1)</code></td>
+<td>SSI validation</td>
+<td>After validation</td>
+</tr>
+<tr>
+<td><strong>Read-Only</strong></td>
+<td><code>beginRO(T1)</code></td>
+<td>None</td>
+<td>Immediate</td>
+</tr>
+</tbody>
+</table>
+<h3 id="32-supported-operations">3.2 Supported Operations</h3>
+<p><strong>Transaction Commands</strong>:
+- <code>begin(Ti)</code> - Start read-write transaction
+- <code>beginRO(Ti)</code> - Start read-only transaction
+- <code>R(Ti, xj)</code> - Read variable xj
+- <code>W(Ti, xj, v)</code> - Write value v to xj
+- <code>end(Ti)</code> - Commit or abort transaction</p>
+<p><strong>Site Commands</strong>:
 - <code>fail(i)</code> - Site i fails
 - <code>recover(i)</code> - Site i recovers</p>
-<p><strong>Query Operations</strong>:
-- <code>dump()</code> - Display all variables at all sites
-- <code>dump(i)</code> - Display all variables at site i
-- <code>dump(xi)</code> - Display variable xi at all sites</p>
+<p><strong>Query Commands</strong>:
+- <code>dump()</code> - Show all variables at all sites
+- <code>dump(i)</code> - Show all variables at site i
+- <code>dump(xj)</code> - Show variable xj at all sites</p>
 <hr />
-<h2 id="4-implementation-details">4. Implementation Details</h2>
+<h2 id="4-implementation">4. Implementation</h2>
 <h3 id="41-code-structure">4.1 Code Structure</h3>
 <pre class="codehilite"><code>RepCRec/
-├── main.py                      # Entry point (166 lines)
+├── main.py                      # Entry point
 ├── transaction_manager.py       # Core controller (430 lines)
 ├── transaction.py               # Transaction state (81 lines)
 ├── data_site.py                 # Site management (113 lines)
@@ -419,75 +523,85 @@ COMMITTED  ABORTED
 └── parser.py                    # Command parser (156 lines)
 </code></pre>
 
-<p><strong>Total</strong>: ~900 lines of Python code (including documentation)</p>
+<p><strong>Total</strong>: ~900 lines of Python code</p>
 <h3 id="42-key-data-structures">4.2 Key Data Structures</h3>
-<p><strong>TransactionManager</strong>:</p>
-<pre class="codehilite"><code class="language-python">sites: List[Site]  # 10 sites
+<pre class="codehilite"><code class="language-python"># TransactionManager
+sites: List[Site]                    # 10 sites
 transactions: Dict[str, Transaction]  # Active transactions
 committed_transactions: List[Transaction]  # For validation
-current_timestamp: int  # Global logical clock
-</code></pre>
+current_timestamp: int                # Global logical clock
 
-<p><strong>Transaction</strong>:</p>
-<pre class="codehilite"><code class="language-python">start_timestamp: int
-read_set: Set[str]  # Variables read
-write_set: Dict[str, int]  # Private workspace
+# Transaction
+start_timestamp: int
+read_set: Set[str]                   # Variables read
+write_set: Dict[str, int]            # Private workspace
 status: TransactionStatus
-</code></pre>
 
-<p><strong>VariableCopy</strong>:</p>
-<pre class="codehilite"><code class="language-python">value: int  # Current value
+# VariableCopy
+value: int                           # Current value
 version_history: List[Tuple[int, int]]  # (timestamp, value)
-is_readable: bool  # Stale flag
+is_readable: bool                    # Stale flag
 </code></pre>
 
 <h3 id="43-complexity-analysis">4.3 Complexity Analysis</h3>
-<p><strong>Time Complexity</strong>:
-- Read operation: O(V) where V = number of versions
-- Write operation: O(1) (deferred)
-- Commit validation: O(T·N) where T = committed transactions, N = variables
-- Site failure: O(T·V) where T = active transactions, V = variables</p>
-<p><strong>Space Complexity</strong>:
-- Per variable: O(V) for version history
-- Per transaction: O(R+W) for read/write sets
-- Global state: O(10·20·V + T) for all sites and transactions</p>
-<h3 id="44-optimization-strategies">4.4 Optimization Strategies</h3>
-<p><strong>Design Simplifications</strong> (targeting 10-hour development window):</p>
 <table>
 <thead>
 <tr>
-<th>Complex Approach</th>
-<th>Simplified Solution</th>
-<th>Justification</th>
+<th>Operation</th>
+<th>Time Complexity</th>
+<th>Space Complexity</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>Distributed 2PC/Paxos</td>
-<td>Centralized TM</td>
-<td>Eliminates consensus overhead</td>
+<td>Read</td>
+<td>O(V)</td>
+<td>O(1)</td>
 </tr>
 <tr>
-<td>Dependency graph cycles</td>
-<td>Set intersection validation</td>
-<td>90% complexity reduction</td>
+<td>Write</td>
+<td>O(1) deferred</td>
+<td>O(1)</td>
 </tr>
 <tr>
-<td>Full recovery protocol</td>
-<td>Stale flag algorithm</td>
-<td>Specialized for replication model</td>
+<td>Commit validation</td>
+<td>O(T·N)</td>
+<td>O(1)</td>
 </tr>
 <tr>
-<td>Two-phase locking</td>
-<td>Optimistic concurrency</td>
-<td>Higher concurrency, simpler</td>
+<td>Site failure</td>
+<td>O(T·V)</td>
+<td>O(1)</td>
 </tr>
 </tbody>
 </table>
+<p>Where: V = versions, T = transactions, N = variables</p>
 <hr />
-<h2 id="5-testing-and-validation">5. Testing and Validation</h2>
-<h3 id="51-test-suite">5.1 Test Suite</h3>
-<p>Comprehensive test suite covering 8 scenarios:</p>
+<h2 id="5-usage">5. Usage</h2>
+<h3 id="51-requirements">5.1 Requirements</h3>
+<ul>
+<li><strong>Python</strong>: 3.7+</li>
+<li><strong>Dependencies</strong>: None (standard library only)</li>
+<li><strong>Platform</strong>: Cross-platform</li>
+</ul>
+<h3 id="52-running-the-system">5.2 Running the System</h3>
+<p><strong>From file</strong>:</p>
+<pre class="codehilite"><code class="language-bash">python main.py test_basic.txt
+</code></pre>
+
+<p><strong>Interactive mode</strong>:</p>
+<pre class="codehilite"><code class="language-bash">python main.py
+&gt; begin(T1)
+&gt; W(T1, x1, 100)
+&gt; end(T1)
+&gt; dump()
+</code></pre>
+
+<p><strong>Batch testing</strong>:</p>
+<pre class="codehilite"><code class="language-bash">./run_all_tests.sh
+</code></pre>
+
+<h3 id="53-test-suite">5.3 Test Suite</h3>
 <table>
 <thead>
 <tr>
@@ -539,175 +653,40 @@ is_readable: bool  # Stale flag
 </tr>
 </tbody>
 </table>
-<h3 id="52-test-example-write-write-conflict">5.2 Test Example: Write-Write Conflict</h3>
-<pre class="codehilite"><code>begin(T1)
-begin(T2)
-W(T1, x1, 100)
-W(T2, x1, 200)
-end(T1)  // T1 commits
-end(T2)  // T2 aborts (WW conflict)
-</code></pre>
-
-<p><strong>Expected Output</strong>:</p>
-<pre class="codehilite"><code>T1 begins
-T2 begins
-T1 writes x1: 100 (to local workspace)
-T2 writes x1: 200 (to local workspace)
-T1 commits
-T2 aborts (WW conflict)
-</code></pre>
-
-<h3 id="53-validation-results">5.3 Validation Results</h3>
-<p>All 8 test cases pass successfully, demonstrating:
-- ✅ Correct serializability enforcement
-- ✅ Proper MVCC snapshot reads
-- ✅ Accurate conflict detection
-- ✅ Robust failure handling
-- ✅ Consistent recovery behavior</p>
+<p><strong>Validation Results</strong>: All 8 test cases pass ✅</p>
 <hr />
-<h2 id="6-usage-and-execution">6. Usage and Execution</h2>
-<h3 id="61-environment-requirements">6.1 Environment Requirements</h3>
+<h2 id="6-theoretical-foundations">6. Theoretical Foundations</h2>
+<h3 id="61-consistency-guarantees">6.1 Consistency Guarantees</h3>
 <ul>
-<li><strong>Python</strong>: 3.7 or higher</li>
-<li><strong>Dependencies</strong>: None (pure standard library)</li>
-<li><strong>Platform</strong>: Cross-platform (Linux, macOS, Windows)</li>
+<li><strong>Serializability</strong>: Execution equivalent to some serial order</li>
+<li><strong>Atomicity</strong>: Transactions commit or abort entirely</li>
+<li><strong>Consistency</strong>: Invariants maintained across commits</li>
+<li><strong>Isolation</strong>: Transactions see consistent snapshots</li>
+<li><strong>Durability</strong>: Committed data persists</li>
 </ul>
-<h3 id="62-running-the-system">6.2 Running the System</h3>
-<p><strong>From file</strong>:</p>
-<pre class="codehilite"><code class="language-bash">python main.py test_basic.txt
-</code></pre>
-
-<p><strong>Interactive mode</strong>:</p>
-<pre class="codehilite"><code class="language-bash">python main.py
-&gt; begin(T1)
-&gt; W(T1, x1, 100)
-&gt; end(T1)
-&gt; dump()
-</code></pre>
-
-<p><strong>Batch testing</strong>:</p>
-<pre class="codehilite"><code class="language-bash">./run_all_tests.sh
-</code></pre>
-
-<hr />
-<h2 id="7-theoretical-foundations">7. Theoretical Foundations</h2>
-<h3 id="71-academic-references">7.1 Academic References</h3>
+<h3 id="62-key-references">6.2 Key References</h3>
 <ol>
-<li><strong>Serializable Snapshot Isolation</strong></li>
-<li>Fekete et al., "Making snapshot isolation serializable" (ACM TODS 2005)</li>
-<li>
-<p>Provides theoretical foundation for SSI conflict detection</p>
-</li>
-<li>
-<p><strong>Available Copies Algorithm</strong></p>
-</li>
-<li>Bernstein et al., "Concurrency Control and Recovery in Database Systems" (1987)</li>
-<li>
-<p>Establishes ROWAA protocol for replicated data</p>
-</li>
-<li>
-<p><strong>Multi-Version Concurrency Control</strong></p>
-</li>
-<li>Reed, "Naming and Synchronization in a Decentralized Computer System" (MIT PhD Thesis 1978)</li>
-<li>
-<p>Introduces MVCC concepts</p>
-</li>
-<li>
-<p><strong>Distributed Database Systems</strong></p>
-</li>
-<li>Özsu and Valduriez, "Principles of Distributed Database Systems" (2020)</li>
-<li>Comprehensive treatment of replication and consistency</li>
+<li><strong>Serializable Snapshot Isolation</strong>: Fekete et al. (ACM TODS 2005)</li>
+<li><strong>Available Copies Algorithm</strong>: Bernstein et al. (1987)</li>
+<li><strong>Multi-Version Concurrency Control</strong>: Reed (MIT PhD Thesis 1978)</li>
+<li><strong>Distributed Database Systems</strong>: Özsu and Valduriez (2020)</li>
 </ol>
-<h3 id="72-consistency-guarantees">7.2 Consistency Guarantees</h3>
-<p>The system provides:
-- <strong>Serializability</strong>: Execution is equivalent to some serial order
-- <strong>Atomicity</strong>: Transactions commit or abort entirely
-- <strong>Consistency</strong>: Invariants maintained across commits
-- <strong>Isolation</strong>: Transactions see consistent snapshots
-- <strong>Durability</strong>: Committed data persists (conceptually)</p>
 <hr />
-<h2 id="8-educational-value">8. Educational Value</h2>
-<h3 id="81-learning-outcomes">8.1 Learning Outcomes</h3>
-<p>This project demonstrates understanding of:</p>
-<ol>
-<li><strong>Concurrency Control</strong></li>
-<li>Optimistic vs. pessimistic approaches</li>
-<li>MVCC implementation details</li>
-<li>
-<p>Conflict detection algorithms</p>
-</li>
-<li>
-<p><strong>Distributed Systems</strong></p>
-</li>
-<li>Replication protocols</li>
-<li>Failure handling</li>
-<li>
-<p>CAP theorem trade-offs</p>
-</li>
-<li>
-<p><strong>Database Internals</strong></p>
-</li>
-<li>Transaction lifecycle management</li>
-<li>Version management</li>
-<li>
-<p>Commit protocols</p>
-</li>
-<li>
-<p><strong>Software Engineering</strong></p>
-</li>
-<li>Clean architecture design</li>
-<li>Modular implementation</li>
-<li>Comprehensive testing</li>
-</ol>
-<h3 id="82-real-world-applications">8.2 Real-World Applications</h3>
-<p>Concepts used in production systems:
-- <strong>PostgreSQL</strong>: MVCC and SSI implementation
-- <strong>CockroachDB</strong>: Distributed transactions with replication
-- <strong>Google Spanner</strong>: Global consistency across replicas
-- <strong>Oracle</strong>: Read consistency through MVCC</p>
-<hr />
-<h2 id="9-extensions-and-future-work">9. Extensions and Future Work</h2>
-<h3 id="91-short-term-extensions-1-2-hours">9.1 Short-term Extensions (1-2 hours)</h3>
+<h2 id="7-project-statistics">7. Project Statistics</h2>
 <ul>
-<li>Query statistics (latency, abort rate)</li>
-<li>Range query support</li>
-<li>Detailed logging mode</li>
-<li>Performance profiling</li>
+<li><strong>Lines of Code</strong>: ~900 (with documentation)</li>
+<li><strong>Core Algorithms</strong>: 3 (MVCC, SSI, Available Copies)</li>
+<li><strong>Test Coverage</strong>: 8 comprehensive scenarios</li>
+<li><strong>External Dependencies</strong>: 0</li>
 </ul>
-<h3 id="92-medium-term-extensions-3-5-hours">9.2 Medium-term Extensions (3-5 hours)</h3>
-<ul>
-<li>Deadlock detection for waiting transactions</li>
-<li>Nested transaction support</li>
-<li>Checkpoint mechanism</li>
-<li>Visualization dashboard</li>
-</ul>
-<h3 id="93-long-term-extensions-10-hours">9.3 Long-term Extensions (10+ hours)</h3>
-<ul>
-<li>True distributed TM with 2PC</li>
-<li>Network partition tolerance</li>
-<li>Full write-ahead logging</li>
-<li>Dynamic site addition/removal</li>
-<li>Byzantine fault tolerance</li>
-</ul>
-<hr />
-<h2 id="10-conclusion">10. Conclusion</h2>
-<p>RepCRec successfully demonstrates core distributed database concepts through a clean, well-architected implementation. The system achieves strong consistency guarantees (serializability) while maintaining high concurrency through MVCC and optimistic concurrency control. The Available Copies algorithm ensures availability despite site failures, and the Stale Flag protocol provides efficient recovery.</p>
-<p>The implementation makes pragmatic trade-offs—using a centralized coordinator and simplified validation—that reduce complexity while preserving correctness. This approach makes the system an excellent educational tool for understanding distributed concurrency control and recovery mechanisms.</p>
-<p><strong>Project Statistics</strong>:
-- <strong>Lines of Code</strong>: ~900 (with documentation)
-- <strong>Core Algorithms</strong>: 3 (MVCC, SSI, Available Copies)
-- <strong>Test Coverage</strong>: 8 comprehensive scenarios
-- <strong>Development Time</strong>: Achievable in 10 hours
-- <strong>External Dependencies</strong>: 0</p>
 <p><strong>Key Contributions</strong>:
 1. Clear demonstration of SSI conflict detection
 2. Practical MVCC implementation
 3. Effective fault-tolerant replication protocol
 4. Comprehensive test suite
 5. Extensive documentation</p>
-<p>The system is production-ready for educational purposes and serves as a solid foundation for understanding advanced database systems concepts.</p>
 <hr />
-<h2 id="appendix-a-command-reference">Appendix A: Command Reference</h2>
+<h2 id="appendix-command-reference">Appendix: Command Reference</h2>
 <h3 id="transaction-commands">Transaction Commands</h3>
 <table>
 <thead>
@@ -795,51 +774,9 @@ T2 aborts (WW conflict)
 </tbody>
 </table>
 <hr />
-<h2 id="appendix-b-algorithm-pseudocode">Appendix B: Algorithm Pseudocode</h2>
-<h3 id="ssi-validation-pseudocode">SSI Validation Pseudocode</h3>
-<pre class="codehilite"><code>function COMMIT(T):
-    # Phase 1: Write-Write Conflict Check
-    for each committed transaction Tc where Tc.commit_time &gt; T.start_time:
-        if T.write_set ∩ Tc.write_set ≠ ∅:
-            ABORT(T, &quot;WW conflict&quot;)
-            return
-
-    # Phase 2: Read-Write Conflict Check
-    for each committed transaction Tc where Tc.commit_time &gt; T.start_time:
-        if (T.read_set ∩ Tc.write_set ≠ ∅) or
-           (T.write_set ∩ Tc.read_set ≠ ∅):
-            ABORT(T, &quot;RW conflict&quot;)
-            return
-
-    # All checks passed
-    T.commit_time ← current_timestamp
-    APPLY_WRITES(T)
-    MARK_COMMITTED(T)
-</code></pre>
-
-<h3 id="available-copies-read-pseudocode">Available Copies Read Pseudocode</h3>
-<pre class="codehilite"><code>function READ(T, x):
-    if x ∈ T.write_set:
-        return T.write_set[x]  # Read-your-own-writes
-
-    if x is non-replicated:
-        site ← unique_site(x)
-        if site.is_up():
-            return site.read_snapshot(x, T.start_time)
-        else:
-            WAIT(T, x)
-    else:  # x is replicated
-        for each site in sites:
-            if site.is_up() and site.x.is_readable:
-                return site.read_snapshot(x, T.start_time)
-        WAIT(T, x)  # No available copy
-</code></pre>
-
-<hr />
 <p><strong>Document Version</strong>: 1.0<br />
 <strong>Date</strong>: November 5, 2025<br />
 <strong>Course</strong>: Advanced Database Systems<br />
 <strong>Project</strong>: RepCRec - Distributed Concurrency Control</p>
-<hr />
 </body>
 </html>

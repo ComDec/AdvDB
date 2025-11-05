@@ -5,13 +5,35 @@ Converts PROJECT_PROPOSAL.md to a professionally formatted PDF
 """
 
 import sys
+import re
 from pathlib import Path
 
 import markdown
 
 
+def process_mermaid_blocks(md_content):
+    """Process Mermaid code blocks and convert them to HTML divs with mermaid.js"""
+    # Find all mermaid code blocks (handles various formats)
+    pattern = r'```mermaid\s*\n(.*?)\n```'
+    
+    def replace_mermaid(match):
+        mermaid_code = match.group(1).strip()
+        # Escape HTML special characters but preserve newlines
+        mermaid_code = mermaid_code.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+        # Create a unique ID for this mermaid diagram
+        import hashlib
+        diagram_id = f"mermaid-{hashlib.md5(mermaid_code.encode()).hexdigest()[:8]}"
+        return f'<div class="mermaid" id="{diagram_id}">\n{mermaid_code}\n</div>'
+    
+    processed_content = re.sub(pattern, replace_mermaid, md_content, flags=re.DOTALL | re.MULTILINE)
+    return processed_content
+
+
 def create_html_with_styling(md_content, title="RepCRec Project Proposal"):
     """Convert markdown to HTML with professional styling"""
+
+    # Process Mermaid blocks first
+    md_content = process_mermaid_blocks(md_content)
 
     # Convert markdown to HTML
     md = markdown.Markdown(
@@ -224,6 +246,30 @@ def create_html_with_styling(md_content, title="RepCRec Project Proposal"):
             page-break-after: always;
         }
 
+        /* Mermaid diagram styling */
+        .mermaid {
+            background-color: #f8f8f8;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 10px;
+            margin: 1em 0;
+            text-align: center;
+            page-break-inside: avoid;
+            max-height: 500px;
+            overflow: auto;
+        }
+
+        .mermaid svg {
+            max-width: 100%;
+            height: auto;
+            max-height: 480px;
+        }
+        
+        .mermaid .nodeLabel,
+        .mermaid .edgeLabel {
+            font-size: 11px !important;
+        }
+
         /* Print-specific adjustments */
         @media print {
             body {
@@ -241,11 +287,15 @@ def create_html_with_styling(md_content, title="RepCRec Project Proposal"):
             h3 {
                 font-size: 14pt;
             }
+
+            .mermaid {
+                page-break-inside: avoid;
+            }
         }
     </style>
     """
 
-    # Create complete HTML document
+    # Create complete HTML document with Mermaid.js
     html_template = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -253,6 +303,34 @@ def create_html_with_styling(md_content, title="RepCRec Project Proposal"):
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{title}</title>
     {css}
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+    <script>
+        mermaid.initialize({{ startOnLoad: true, theme: 'default', 
+            flowchart: {{ 
+                useMaxWidth: true,
+                htmlLabels: true,
+                curve: 'basis',
+                nodeSpacing: 50,
+                rankSpacing: 80,
+                padding: 10
+            }},
+            state: {{
+                nodeSpacing: 50,
+                rankSpacing: 80,
+                padding: 10
+            }},
+            themeVariables: {{
+                primaryColor: '#2c5aa0',
+                primaryTextColor: '#fff',
+                primaryBorderColor: '#1a4480',
+                lineColor: '#2c5aa0',
+                secondaryColor: '#f0f0f0',
+                tertiaryColor: '#ffffff',
+                fontSize: '12px',
+                fontFamily: 'Arial, sans-serif'
+            }}
+        }});
+    </script>
 </head>
 <body>
     {html_content}
@@ -287,41 +365,108 @@ def convert_md_to_pdf(md_file, output_pdf=None):
     print(f"HTML file saved: {html_file}")
 
     print("Generating PDF...")
-    try:
-        from weasyprint import CSS, HTML
-
-        # Convert HTML to PDF
-        HTML(string=html_content).write_pdf(
-            output_pdf,
-            stylesheets=[
-                CSS(
-                    string="""
-                @page {
-                    size: A4;
-                    margin: 2.5cm 2cm 2cm 2cm;
-                }
-            """
+    
+    # Check if HTML contains Mermaid diagrams (need JavaScript rendering)
+    has_mermaid = '<div class="mermaid"' in html_content
+    
+    if has_mermaid:
+        # Use Playwright for JavaScript rendering (Mermaid needs JS)
+        try:
+            from playwright.sync_api import sync_playwright
+            
+            print("  Detected Mermaid diagrams, using Playwright for rendering...")
+            
+            with sync_playwright() as p:
+                browser = p.chromium.launch(headless=True)
+                page = browser.new_page()
+                
+                # Write HTML to temp file for loading
+                temp_html = html_file
+                page.goto(f"file://{temp_html.absolute()}")
+                
+                # Wait for Mermaid to render (with timeout)
+                print("  Waiting for Mermaid diagrams to render...")
+                page.wait_for_timeout(3000)  # Wait 3 seconds for Mermaid to render
+                
+                # Additional wait for all mermaid diagrams
+                try:
+                    page.wait_for_selector('.mermaid svg', timeout=5000)
+                except:
+                    print("  Warning: Some Mermaid diagrams may not have rendered")
+                
+                # Generate PDF
+                page.pdf(
+                    path=str(output_pdf),
+                    format='A4',
+                    margin={
+                        'top': '2.5cm',
+                        'right': '2cm',
+                        'bottom': '2cm',
+                        'left': '2cm'
+                    },
+                    print_background=True
                 )
-            ],
-        )
+                browser.close()
+            
+            print(f"✓ PDF created successfully: {output_pdf}")
+            output_pdf_path = Path(output_pdf)
+            print(f"  File size: {output_pdf_path.stat().st_size / 1024:.1f} KB")
+            return True
+            
+        except ImportError:
+            print("\n" + "=" * 60)
+            print("ERROR: Playwright is required for Mermaid diagram rendering!")
+            print("=" * 60)
+            print("\nPlease install Playwright:")
+            print("  pip install playwright")
+            print("  playwright install chromium")
+            print("\nAlternatively, you can:")
+            print("  1. View the HTML file in a browser to see rendered diagrams")
+            print("  2. Use a browser's Print to PDF feature")
+            print(f"\nHTML file saved: {html_file}")
+            return False
+        except Exception as e:
+            print(f"\nError during PDF generation: {e}")
+            print(f"HTML file saved: {html_file}")
+            print("You can open it in a browser and use Print to PDF")
+            return False
+    else:
+        # Use WeasyPrint for simple HTML (no JavaScript needed)
+        try:
+            from weasyprint import CSS, HTML
 
-        print(f"✓ PDF created successfully: {output_pdf}")
-        output_pdf_path = Path(output_pdf)
-        print(f"  File size: {output_pdf_path.stat().st_size / 1024:.1f} KB")
-        return True
+            # Convert HTML to PDF
+            HTML(string=html_content).write_pdf(
+                output_pdf,
+                stylesheets=[
+                    CSS(
+                        string="""
+                    @page {
+                        size: A4;
+                        margin: 2.5cm 2cm 2cm 2cm;
+                    }
+                """
+                    )
+                ],
+            )
 
-    except ImportError:
-        print("\n" + "=" * 60)
-        print("ERROR: WeasyPrint is not installed!")
-        print("=" * 60)
-        print("\nPlease install required packages:")
-        print("  pip install weasyprint markdown")
-        print("\nNote: WeasyPrint requires additional system dependencies:")
-        print("  - On Ubuntu/Debian: sudo apt-get install libpango-1.0-0 libpangocairo-1.0-0")
-        print("  - On macOS: brew install pango")
-        print("  - On Windows: Download GTK3 runtime")
-        print("\nHTML file has been generated instead: {html_file}")
-        return False
+            print(f"✓ PDF created successfully: {output_pdf}")
+            output_pdf_path = Path(output_pdf)
+            print(f"  File size: {output_pdf_path.stat().st_size / 1024:.1f} KB")
+            return True
+
+        except ImportError:
+            print("\n" + "=" * 60)
+            print("ERROR: WeasyPrint is not installed!")
+            print("=" * 60)
+            print("\nPlease install required packages:")
+            print("  pip install weasyprint markdown")
+            print("\nNote: WeasyPrint requires additional system dependencies:")
+            print("  - On Ubuntu/Debian: sudo apt-get install libpango-1.0-0 libpangocairo-1.0-0")
+            print("  - On macOS: brew install pango")
+            print("  - On Windows: Download GTK3 runtime")
+            print(f"\nHTML file has been generated instead: {html_file}")
+            return False
 
 
 def main():
