@@ -452,7 +452,7 @@ class TransactionManager:
 
         for tx_id, transaction in self.transactions.items():
             if transaction.status in [TransactionStatus.ACTIVE, TransactionStatus.WAITING]:
-                # 检查事务是否读取了该站点上的非复制变量
+                # 检查1: 事务是否读取了该站点上的非复制变量
                 for var_id in transaction.read_set:
                     var_index = int(var_id[1:])
                     if var_index % 2 == 1:  # 非复制变量
@@ -460,6 +460,11 @@ class TransactionManager:
                         if target_site_id == site_id:
                             transactions_to_abort.append(transaction)
                             break
+
+                # 检查2: 事务是否写入过该站点（ROWAA要求）
+                if transaction not in transactions_to_abort:
+                    if site_id in transaction.sites_written_to:
+                        transactions_to_abort.append(transaction)
 
         for transaction in transactions_to_abort:
             self._abort_transaction(transaction, f"site {site_id} failed")
