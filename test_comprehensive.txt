@@ -1,0 +1,40 @@
+// 综合测试：包含多种场景
+// 测试事务并发、站点故障、恢复和冲突解决
+
+// 初始化一些数据
+begin(T1)
+W(T1, x1, 111)
+W(T1, x2, 122)
+W(T1, x3, 133)
+W(T1, x4, 144)
+end(T1)
+dump()
+
+// 测试并发事务
+begin(T2)
+begin(T3)
+R(T2, x1)
+R(T3, x2)
+W(T2, x3, 233)
+W(T3, x4, 344)
+end(T2)
+end(T3)
+
+// 测试站点故障
+fail(1)
+fail(2)
+begin(T4)
+W(T4, x5, 155)
+end(T4)
+
+// 恢复站点
+recover(1)
+recover(2)
+begin(T5)
+R(T5, x1)
+R(T5, x2)
+W(T5, x6, 166)
+end(T5)
+
+// 最终dump
+dump()

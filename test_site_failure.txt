@@ -1,0 +1,14 @@
+// 测试站点故障和恢复
+// 测试站点失败时的等待机制和恢复后的陈旧标志
+
+begin(T1)
+W(T1, x1, 101)
+end(T1)
+dump()
+fail(2)
+begin(T2)
+R(T2, x4)
+recover(2)
+R(T2, x4)
+end(T2)
+dump()
