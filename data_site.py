@@ -61,6 +61,8 @@ class Site:
     def fail(self):
         """站点失败"""
         self.status = SiteStatus.DOWN
+        for variable_copy in self.variables.values():
+            variable_copy.reset_snapshot_history()
 
     def recover(self):
         """

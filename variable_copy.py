@@ -23,6 +23,7 @@ class VariableCopy:
         self.version_history: List[Tuple[int, int]] = [(0, initial_value)]  # MVCC版本历史
         self.is_replicated = is_replicated
         self.is_readable = True  # 默认为可读
+        self.last_commit_timestamp = 0
 
     def write(self, commit_timestamp: int, new_value: int):
         """
@@ -34,8 +35,17 @@ class VariableCopy:
         """
         self.value = new_value
         self.version_history.append((commit_timestamp, new_value))
+        self.last_commit_timestamp = commit_timestamp
         # 写入后，该副本变为可读（恢复算法的关键）
         self.is_readable = True
+
+    def reset_snapshot_history(self):
+        """站点失败后清空旧的MVCC历史，仅保留最新值"""
+        if self.version_history:
+            latest_ts, latest_val = self.version_history[-1]
+            self.last_commit_timestamp = latest_ts
+            self.value = latest_val
+        self.version_history = [(self.last_commit_timestamp, self.value)]
 
     def read_snapshot(self, snapshot_timestamp: int) -> int:
         """

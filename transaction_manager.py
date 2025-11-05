@@ -2,7 +2,7 @@
 TransactionManager类 - 中央事务管理器
 """
 
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Set, Tuple
 
 from data_site import Site, SiteStatus
 from transaction import Transaction, TransactionStatus
@@ -106,7 +106,7 @@ class TransactionManager:
 
             if not site.is_up():
                 # 站点Down，事务必须等待
-                transaction.set_waiting(variable_id)
+                transaction.set_waiting(variable_id, ("read", variable_id))
                 print(f"{transaction_id} waits (site {target_site_id} is down)")
                 return
 
@@ -130,7 +130,7 @@ class TransactionManager:
 
             if target_site is None:
                 # 所有副本都不可用，事务等待
-                transaction.set_waiting(variable_id)
+                transaction.set_waiting(variable_id, ("read", variable_id))
                 print(f"{transaction_id} waits (no available copy of {variable_id})")
                 return
 
@@ -160,9 +160,42 @@ class TransactionManager:
         if transaction.status == TransactionStatus.WAITING:
             return
 
-        # 只更新私有工作区，不实际写入数据库
+        variable_index = int(variable_id[1:])
+        available_sites: List[Site] = []
+
+        if variable_index % 2 == 1:  # 非复制变量
+            target_site_id = 1 + (variable_index % 10)
+            site = self.get_site(target_site_id)
+
+            if not site.is_up():
+                transaction.set_waiting(variable_id, ("write", variable_id, value))
+                print(f"{transaction_id} waits (site {target_site_id} is down)")
+                return
+
+            available_sites.append(site)
+
+        else:  # 复制变量
+            for site in self.sites:
+                if site.has_variable(variable_id):
+                    if site.is_up():
+                        available_sites.append(site)
+
+            if not available_sites:
+                transaction.set_waiting(variable_id, ("write", variable_id, value))
+                print(f"{transaction_id} waits (no available copy of {variable_id})")
+                return
+
+        # 记录写入及受影响站点
         transaction.write(variable_id, value)
-        print(f"{transaction_id} writes {variable_id}: {value} (to local workspace)")
+
+        affected_site_ids = []
+        for site in available_sites:
+            transaction.record_write_site(site.site_id, self.current_timestamp)
+            affected_site_ids.append(site.site_id)
+
+        affected_site_ids.sort()
+        sites_str = ", ".join(str(site_id) for site_id in affected_site_ids)
+        print(f"{transaction_id} writes {variable_id}: {value} (will update sites: [{sites_str}])")
 
     def end(self, transaction_id: str):
         """
@@ -187,8 +220,15 @@ class TransactionManager:
             self._abort_transaction(transaction, "cannot commit while waiting")
             return
 
+        # 写操作站点失败检查
+        failed_site = self._check_site_failure_for_writes(transaction)
+        if failed_site is not None:
+            self._abort_transaction(transaction, f"site {failed_site} failed after write")
+            return
+
         # 只读事务直接提交（不需要验证）
         if transaction.is_read_only:
+            transaction.rw_incoming_sources = self._collect_rw_incoming_sources(transaction)
             self._commit_transaction(transaction)
             return
 
@@ -197,10 +237,16 @@ class TransactionManager:
             self._abort_transaction(transaction, "WW conflict")
             return
 
-        # 验证2：RW冲突（SSI验证）
-        if self._check_rw_conflict(transaction):
-            self._abort_transaction(transaction, "RW conflict (SSI)")
+        # 验证2：SSI危险结构检测（连续RW边）
+        incoming_sources = self._collect_rw_incoming_sources(transaction)
+        dangerous_source = self._detect_dangerous_structure(transaction, incoming_sources)
+        if dangerous_source is not None:
+            self._abort_transaction(
+                transaction, f"RW conflict (dangerous structure via {dangerous_source})"
+            )
             return
+
+        transaction.rw_incoming_sources = incoming_sources
 
         # 所有检查通过，提交事务
         self._commit_transaction(transaction)
@@ -319,12 +365,68 @@ class TransactionManager:
 
         当有事务提交或中止时，尝试重新执行等待中的事务
         """
-        for tx_id, transaction in self.transactions.items():
+        for tx_id, transaction in list(self.transactions.items()):
             if transaction.status == TransactionStatus.WAITING:
+                op = transaction.waiting_operation
                 transaction.set_active()
-                # 重新尝试读取之前等待的变量
-                if transaction.waiting_for_variable:
-                    self.read(tx_id, transaction.waiting_for_variable)
+                if not op:
+                    continue
+
+                op_type = op[0]
+                if op_type == "read":
+                    self.read(tx_id, op[1])
+                elif op_type == "write":
+                    self.write(tx_id, op[1], op[2])
+
+    def _collect_rw_incoming_sources(self, transaction: Transaction) -> Set[str]:
+        """收集对当前事务构成RW依赖的已提交事务（写->读边）"""
+        incoming_sources: Set[str] = set()
+        if not transaction.read_set:
+            return incoming_sources
+
+        for committed_tx in self.committed_transactions:
+            if committed_tx.commit_timestamp is None:
+                continue
+            if committed_tx.commit_timestamp <= transaction.start_timestamp:
+                continue
+
+            if transaction.read_set & set(committed_tx.write_set.keys()):
+                incoming_sources.add(committed_tx.id)
+
+        return incoming_sources
+
+    def _detect_dangerous_structure(
+        self, transaction: Transaction, incoming_sources: Set[str]
+    ) -> Optional[str]:
+        """检测是否存在连续两个RW边导致的危险结构"""
+        for source_id in incoming_sources:
+            source_tx = self._find_committed_transaction(source_id)
+            if not source_tx:
+                continue
+
+            if source_tx.rw_incoming_sources:
+                return source_id
+
+        return None
+
+    def _find_committed_transaction(self, transaction_id: str) -> Optional[Transaction]:
+        for committed_tx in self.committed_transactions:
+            if committed_tx.id == transaction_id:
+                return committed_tx
+        return None
+
+    def _check_site_failure_for_writes(self, transaction: Transaction) -> Optional[int]:
+        """检查事务写入过的站点在提交前是否发生故障"""
+        for site_id, write_ts in transaction.site_write_times.items():
+            for recorded_site_id, event, event_ts in self.failure_history:
+                if (
+                    recorded_site_id == site_id
+                    and event == "down"
+                    and event_ts > write_ts
+                    and event_ts <= self.current_timestamp
+                ):
+                    return site_id
+        return None
 
     # ==================== 站点故障与恢复 ====================
 
