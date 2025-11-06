@@ -206,17 +206,23 @@
             background-color: #f8f8f8;
             border: 1px solid #ddd;
             border-radius: 4px;
-            padding: 15px;
-            margin: 1.5em 0;
+            padding: 10px;
+            margin: 1em 0;
             text-align: center;
             page-break-inside: avoid;
-            min-height: 200px;
-            overflow: visible;
+            max-height: 500px;
+            overflow: auto;
         }
 
         .mermaid svg {
             max-width: 100%;
             height: auto;
+            max-height: 480px;
+        }
+        
+        .mermaid .nodeLabel,
+        .mermaid .edgeLabel {
+            font-size: 11px !important;
         }
 
         /* Print-specific adjustments */
@@ -249,7 +255,15 @@
             flowchart: { 
                 useMaxWidth: true,
                 htmlLabels: true,
-                curve: 'basis'
+                curve: 'basis',
+                nodeSpacing: 50,
+                rankSpacing: 80,
+                padding: 10
+            },
+            state: {
+                nodeSpacing: 50,
+                rankSpacing: 80,
+                padding: 10
             },
             themeVariables: {
                 primaryColor: '#2c5aa0',
@@ -257,7 +271,9 @@
                 primaryBorderColor: '#1a4480',
                 lineColor: '#2c5aa0',
                 secondaryColor: '#f0f0f0',
-                tertiaryColor: '#ffffff'
+                tertiaryColor: '#ffffff',
+                fontSize: '12px',
+                fontFamily: 'Arial, sans-serif'
             }
         });
     </script>
@@ -276,29 +292,23 @@
 <hr />
 <h2 id="1-system-architecture">1. System Architecture</h2>
 <h3 id="11-components">1.1 Components</h3>
-<div class="mermaid" id="mermaid-f7bece1a">
-graph TB
-    TM[TransactionManager&lt;br/&gt;Centralized Coordinator]
+<div class="mermaid" id="mermaid-d319eab3">
+graph LR
+    TM[TransactionManager]
     S1[Site 1]
     S2[Site 2]
-    S3[Site ...]
     S10[Site 10]
+    T[Transactions]
 
-    TM --&gt;|Manage| S1
-    TM --&gt;|Manage| S2
-    TM --&gt;|Manage| S3
-    TM --&gt;|Manage| S10
-
-    T1[Transaction T1]
-    T2[Transaction T2]
-
-    T1 --&gt;|Submit| TM
-    T2 --&gt;|Submit| TM
+    TM --&gt;|Manages| S1
+    TM --&gt;|Manages| S2
+    TM --&gt;|Manages| "..."
+    TM --&gt;|Manages| S10
+    T --&gt;|Submit| TM
 
     style TM fill:#ff9999
     style S1 fill:#99ccff
     style S2 fill:#99ccff
-    style S3 fill:#99ccff
     style S10 fill:#99ccff
 </div>
 
@@ -317,45 +327,33 @@ graph TB
 <hr />
 <h2 id="2-core-algorithms">2. Core Algorithms</h2>
 <h3 id="21-transaction-lifecycle">2.1 Transaction Lifecycle</h3>
-<div class="mermaid" id="mermaid-50c135ed">
+<div class="mermaid" id="mermaid-411f8866">
 stateDiagram-v2
     [*] --&gt; ACTIVE: begin(T)
     ACTIVE --&gt; WAITING: Resource unavailable
-    WAITING --&gt; ACTIVE: Resource available
-    WAITING --&gt; ABORTED: Timeout/Failure
-    ACTIVE --&gt; COMMITTED: end(T) + Validation Pass
-    ACTIVE --&gt; ABORTED: end(T) + Conflict Detected
+    WAITING --&gt; ACTIVE: Available
+    WAITING --&gt; ABORTED: Failure
+    ACTIVE --&gt; COMMITTED: Validation Pass
+    ACTIVE --&gt; ABORTED: Conflict
     COMMITTED --&gt; [*]
     ABORTED --&gt; [*]
-
-    note right of ACTIVE
-        Normal execution
-        Read/Write operations
-    end note
-
-    note right of WAITING
-        Blocked on unavailable
-        site or stale variable
-    end note
 </div>
 
 <h3 id="22-multi-version-concurrency-control-mvcc">2.2 Multi-Version Concurrency Control (MVCC)</h3>
 <p><strong>Objective</strong>: Enable concurrent reads without blocking writers using version snapshots.</p>
-<div class="mermaid" id="mermaid-93d72e4b">
+<div class="mermaid" id="mermaid-75a2cc97">
 flowchart TD
-    Start([Transaction T starts&lt;br/&gt;start_ts = 5]) --&gt; Read[Read variable x]
-    Read --&gt; Check{Variable in&lt;br/&gt;write_set?}
-    Check --&gt;|Yes| ReturnWrite[Return write_set value]
-    Check --&gt;|No| GetVersions[Get version_history&lt;br/&gt;from site]
-    GetVersions --&gt; FindVersion{Find version where&lt;br/&gt;commit_ts &lt; start_ts}
-    FindVersion --&gt;|Found| ReturnValue[Return snapshot value]
-    FindVersion --&gt;|Not found| ReturnInitial[Return initial value]
-    ReturnWrite --&gt; End([Return value])
-    ReturnValue --&gt; End
-    ReturnInitial --&gt; End
+    Start([T starts]) --&gt; Read[Read x]
+    Read --&gt; Check{In write_set?}
+    Check --&gt;|Yes| Return[Return value]
+    Check --&gt;|No| GetVer[Get versions]
+    GetVer --&gt; Find{commit_ts &lt; start_ts?}
+    Find --&gt;|Yes| Return
+    Find --&gt;|No| Init[Initial value]
+    Init --&gt; Return
 
     style Start fill:#90EE90
-    style End fill:#90EE90
+    style Return fill:#90EE90
 </div>
 
 <p><strong>Key Algorithm</strong>:</p>
@@ -372,16 +370,16 @@ flowchart TD
 <p><strong>Complexity</strong>: O(V) where V = number of versions</p>
 <h3 id="23-serializable-snapshot-isolation-ssi">2.3 Serializable Snapshot Isolation (SSI)</h3>
 <p><strong>Objective</strong>: Provide serializability while maintaining snapshot isolation benefits.</p>
-<div class="mermaid" id="mermaid-0d79caed">
+<div class="mermaid" id="mermaid-5d1e0218">
 flowchart TD
-    Start([Transaction T calls end]) --&gt; CheckWW{Check Write-Write&lt;br/&gt;Conflict}
-    CheckWW --&gt;|Conflict| Abort1[ABORT T&lt;br/&gt;First Committer Wins]
-    CheckWW --&gt;|No Conflict| CheckRW{Check Read-Write&lt;br/&gt;Conflict}
-    CheckRW --&gt;|Conflict| Abort2[ABORT T&lt;br/&gt;Dangerous Structure]
-    CheckRW --&gt;|No Conflict| AssignTS[Assign commit_timestamp]
-    AssignTS --&gt; ApplyWrites[Apply writes to all&lt;br/&gt;available sites]
-    ApplyWrites --&gt; Commit[COMMIT T]
-    Abort1 --&gt; End([Complete])
+    Start([end T]) --&gt; WW{WW Conflict?}
+    WW --&gt;|Yes| Abort1[ABORT]
+    WW --&gt;|No| RW{RW Conflict?}
+    RW --&gt;|Yes| Abort2[ABORT]
+    RW --&gt;|No| Assign[Assign TS]
+    Assign --&gt; Apply[Apply writes]
+    Apply --&gt; Commit[COMMIT]
+    Abort1 --&gt; End([Done])
     Abort2 --&gt; End
     Commit --&gt; End
 
@@ -404,40 +402,38 @@ flowchart TD
 <h3 id="24-available-copies-algorithm-rowaa">2.4 Available Copies Algorithm (ROWAA)</h3>
 <p><strong>Strategy</strong>: "Read One, Write All Available"</p>
 <h4 id="read-operation-flow">Read Operation Flow</h4>
-<div class="mermaid" id="mermaid-00f44486">
+<div class="mermaid" id="mermaid-6563fe4f">
 flowchart TD
-    Start([Read Request]) --&gt; CheckType{Variable type?}
-    CheckType --&gt;|Non-replicated| CheckSite{Site up?}
-    CheckType --&gt;|Replicated| FindSite[Find available site&lt;br/&gt;with readable copy]
-    CheckSite --&gt;|Yes| ReadSnapshot[Read snapshot&lt;br/&gt;at start_ts]
-    CheckSite --&gt;|No| Wait1[Set transaction&lt;br/&gt;WAITING]
-    FindSite --&gt; Found{Found readable&lt;br/&gt;site?}
-    Found --&gt;|Yes| ReadSnapshot
-    Found --&gt;|No| Wait2[Set transaction&lt;br/&gt;WAITING]
-    ReadSnapshot --&gt; Return[Return value]
-    Wait1 --&gt; End([End])
-    Wait2 --&gt; End
+    Start([Read]) --&gt; Type{Type?}
+    Type --&gt;|Non-rep| SiteUp{Site up?}
+    Type --&gt;|Replicated| Find[Find readable site]
+    SiteUp --&gt;|Yes| Read[Read snapshot]
+    SiteUp --&gt;|No| Wait[WAITING]
+    Find --&gt; Found{Found?}
+    Found --&gt;|Yes| Read
+    Found --&gt;|No| Wait
+    Read --&gt; Return[Return]
+    Wait --&gt; End([End])
     Return --&gt; End
 
     style Start fill:#90EE90
-    style Wait1 fill:#FFD93D
-    style Wait2 fill:#FFD93D
+    style Wait fill:#FFD93D
     style Return fill:#51CF66
     style End fill:#90EE90
 </div>
 
 <h4 id="write-operation-flow">Write Operation Flow</h4>
-<div class="mermaid" id="mermaid-314357a6">
+<div class="mermaid" id="mermaid-6c6a490b">
 flowchart TD
-    Start([Write Request]) --&gt; Buffer[Buffer write in&lt;br/&gt;transaction write_set]
-    Buffer --&gt; Commit{Transaction&lt;br/&gt;commits?}
-    Commit --&gt;|No| Abort[Discard write_set]
-    Commit --&gt;|Yes| CheckType{Variable type?}
-    CheckType --&gt;|Non-replicated| WriteOne[Write to unique site]
-    CheckType --&gt;|Replicated| WriteAll[Write to all&lt;br/&gt;available sites]
-    WriteOne --&gt; MarkReadable[Mark variable readable&lt;br/&gt;if replicated]
-    WriteAll --&gt; MarkReadable
-    MarkReadable --&gt; End([Complete])
+    Start([Write]) --&gt; Buffer[Buffer in write_set]
+    Buffer --&gt; Commit{Commits?}
+    Commit --&gt;|No| Abort[Discard]
+    Commit --&gt;|Yes| Type{Type?}
+    Type --&gt;|Non-rep| Write1[Write to site]
+    Type --&gt;|Rep| WriteAll[Write all sites]
+    Write1 --&gt; Mark[Mark readable]
+    WriteAll --&gt; Mark
+    Mark --&gt; End([Done])
     Abort --&gt; End
 
     style Start fill:#90EE90
@@ -447,23 +443,23 @@ flowchart TD
 </div>
 
 <h3 id="25-failure-recovery-stale-flag-protocol">2.5 Failure Recovery (Stale Flag Protocol)</h3>
-<div class="mermaid" id="mermaid-32a88331">
+<div class="mermaid" id="mermaid-cc28127b">
 flowchart TD
-    Start([Site recovers]) --&gt; MarkUP[Mark site status UP]
-    MarkUP --&gt; Iterate[Iterate variables]
-    Iterate --&gt; CheckRep{Variable&lt;br/&gt;replicated?}
-    CheckRep --&gt;|Yes| MarkStale[Mark is_readable = False&lt;br/&gt;Stale flag]
-    CheckRep --&gt;|No| MarkReadable[Mark is_readable = True&lt;br/&gt;Immediately usable]
-    MarkStale --&gt; NextVar{More&lt;br/&gt;variables?}
-    MarkReadable --&gt; NextVar
-    NextVar --&gt;|Yes| Iterate
-    NextVar --&gt;|No| AbortActive[Abort transactions&lt;br/&gt;that accessed failed site]
-    AbortActive --&gt; WakeWaiting[Wake waiting transactions]
-    WakeWaiting --&gt; End([Recovery complete])
+    Start([Recover]) --&gt; UP[Mark UP]
+    UP --&gt; Loop[For each variable]
+    Loop --&gt; Rep{Replicated?}
+    Rep --&gt;|Yes| Stale[Mark stale]
+    Rep --&gt;|No| Ready[Mark readable]
+    Stale --&gt; Next{More?}
+    Ready --&gt; Next
+    Next --&gt;|Yes| Loop
+    Next --&gt;|No| Abort[Abort affected Txs]
+    Abort --&gt; Wake[Wake waiting]
+    Wake --&gt; End([Done])
 
     style Start fill:#90EE90
-    style MarkStale fill:#FFD93D
-    style MarkReadable fill:#51CF66
+    style Stale fill:#FFD93D
+    style Ready fill:#51CF66
     style End fill:#90EE90
 </div>
 
