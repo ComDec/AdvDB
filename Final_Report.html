@@ -82,7 +82,7 @@
     <li><strong>Other events</strong>: on commit/abort print transaction name; on write indicate affected sites (those up at commit); when a transaction waits due to a site failure (e.g., odd variable on a down site), print the wait event.</li>
   </ul>
 
-  <h2>Compliance Checklist (handDB2-4-11 §4.1)</h2>
+  <h2>Compliance Checklist</h2>
   <table>
     <tr><th>Item</th><th>Status</th><th>Notes</th></tr>
     <tr><td>Data topology (20 vars, 10 sites, even replicated, odd at 1+(i mod 10), init 10*i)</td><td><span class="tag">Met</span></td><td><code>Site.initialize_variables()</code></td></tr>
