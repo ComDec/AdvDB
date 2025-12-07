@@ -8,17 +8,17 @@ This simulator implements the RepCRec. It models a centralized Transaction Manag
 
 ## Requirements Trace
 
-- **Data topology:** Variables x1..x20, even indexes on all sites, odd indexes on a single site `1 + (i mod 10)`, initial value `10 * i`.
+- **Data topology:** Variables x1..x20, even indexes on all sites, odd indexes on a single site`1 + (i mod 10)`, initial value`10 * i`.
 - **Execution model:** Each input line advances the logical clock. TM never fails and parses commands from file or stdin.
 - **Reads:** Non-replicated variables read from their unique site if up; otherwise the transaction waits. Replicated variables read the freshest committed version before transaction start from any site that has been continuously up since that commit; if every replica was down in that window the transaction aborts; otherwise it waits for a readable copy.
 - **Writes:** Buffered in the transaction workspace. On commit, writes propagate to all currently up sites holding the variable (ROWAA). Down sites remain stale until later recovery plus a fresh commit.
 - **Commit validation (SSI):** First-committer-wins on WW conflicts, and dangerous structure detection via consecutive RW antidependencies; any site that a transaction wrote to and that failed before commit forces an abort.
 - **Failure/recovery:** Fail clears MVCC history (copies become unreadable until refreshed). Recovery marks non-replicated copies readable immediately and replicated copies stale until updated. Waiting transactions re-attempt deferred operations when sites recover.
-- **Output:** Reads print `x#: value`; commits/aborts print the transaction outcome; writes log the sites updated; `dump` prints per‑site committed snapshots.
+- **Output:** Reads print`x#: value`; commits/aborts print the transaction outcome; writes log the sites updated;`dump` prints per‑site committed snapshots.
 
 ## Implementation Notes
 
-- **Modules:** `transaction_manager.py` (orchestration, SSI checks, failure history, deferred waits), `transaction.py` (state, deferred op queue), `data_site.py` (site storage and stale flags), `variable_copy.py` (MVCC history with reset on failure), `parser.py` (command normalization), `main.py` (CLI).
+- **Modules:**`transaction_manager.py` (orchestration, SSI checks, failure history, deferred waits),`transaction.py` (state, deferred op queue),`data_site.py` (site storage and stale flags),`variable_copy.py` (MVCC history with reset on failure),`parser.py` (command normalization),`main.py` (CLI).
 - **SSI tracking:** RW antidependency edges are recorded on commit; a transaction with an incoming RW edge from a transaction that itself has outgoing RW edges triggers the dangerous-structure abort.
 - **Available copies:** Writes record touched sites for later failure aborts; commit spreads writes only to up sites, logging affected sites.
 - **Wait handling:** Reads/writes issued while waiting are queued and replayed after recovery to respect input order.
