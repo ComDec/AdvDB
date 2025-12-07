@@ -84,15 +84,12 @@ class RepCRec:
         print(f"=== Executing {len(commands)} commands from {filename} ===\n")
 
         for command, args in commands:
-            # 时间推进
             self.tm.tick()
 
-            # 执行命令
             self.execute_command(command, args)
 
         print("\n=== Execution completed ===")
 
-        # 打印最终统计
         print(f"\nFinal statistics:")
         print(f"  Committed transactions: {len(self.tm.committed_transactions)}")
         print(f"  Aborted transactions: {len(self.tm.aborted_transactions)}")
@@ -114,10 +111,8 @@ class RepCRec:
         print(f"\n=== Executing {len(commands)} commands ===\n")
 
         for command, args in commands:
-            # 时间推进
             self.tm.tick()
 
-            # 执行命令
             self.execute_command(command, args)
 
         print("\n=== Execution completed ===")
@@ -147,10 +142,8 @@ class RepCRec:
                 if result:
                     command, args = result
 
-                    # 时间推进
                     self.tm.tick()
 
-                    # 执行命令
                     self.execute_command(command, args)
 
             except EOFError:
@@ -173,11 +166,9 @@ def main():
     recrcrec = RepCRec()
 
     if len(sys.argv) > 1:
-        # 从文件运行
         filename = sys.argv[1]
         recrcrec.run_from_file(filename)
     else:
-        # 交互式模式
         print("RepCRec - Distributed Replicated Concurrency Control and Recovery")
         print("=" * 60)
         print("\nUsage:")

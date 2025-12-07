@@ -249,7 +249,6 @@ class TransactionManager:
             self._abort_transaction(transaction, "write target unavailable")
             return
 
-        # 写入过的站点若在提交前失败，则必须中止
         if transaction.site_failed_after_write:
             self._abort_transaction(transaction, "site failed after write")
             return
@@ -264,7 +263,6 @@ class TransactionManager:
             self._abort_transaction(transaction, "SSI dangerous structure")
             return
 
-        # 所有检查通过，提交事务
         self._commit_transaction(transaction)
 
     # ==================== SSI validation ====================
@@ -280,14 +278,13 @@ class TransactionManager:
         for committed_tx in self.committed_transactions:
         # only commits after T started
             if committed_tx.commit_timestamp > transaction.start_timestamp:
-                # intersect write sets
                 write_intersection = set(transaction.write_set.keys()) & set(
                     committed_tx.write_set.keys()
                 )
                 if write_intersection:
-                    return True  # 发现WW冲突
+                    return True
 
-        return False  # 无冲突
+        return False
 
     def _check_dangerous_structure(self, transaction: Transaction) -> bool:
         """
@@ -401,7 +398,6 @@ class TransactionManager:
         else:
             print(f"{transaction.id} aborts")
 
-        # 唤醒等待中的事务
         self._wakeup_waiting_transactions()
 
     def _write_targets_available(self, transaction: Transaction) -> bool:
@@ -484,7 +480,7 @@ class TransactionManager:
         elif kind == "end":
             self.end(tx_id)
 
-    # ==================== 站点故障与恢复 ====================
+    # ==================== Site failure & recovery ====================
 
     def fail(self, site_id: int):
         """
@@ -497,18 +493,15 @@ class TransactionManager:
         site = self.get_site(site_id)
         site.fail()
 
-        # 记录故障历史
         self.failure_history.append((site_id, "down", self.current_timestamp))
 
         print(f"Site {site_id} fails")
 
-        # 标记写过该站点的事务在提交时必须中止
         for transaction in self.transactions.values():
             if transaction.status in [TransactionStatus.ACTIVE, TransactionStatus.WAITING]:
                 if site_id in transaction.sites_written_to:
                     transaction.site_failed_after_write = True
 
-        # 中止所有访问了该站点的活跃事务
         self._abort_transactions_using_failed_site(site_id)
 
     def recover(self, site_id: int):
@@ -522,12 +515,10 @@ class TransactionManager:
         site = self.get_site(site_id)
         site.recover()
 
-        # 记录恢复历史
         self.failure_history.append((site_id, "up", self.current_timestamp))
 
         print(f"Site {site_id} recovers")
 
-        # 唤醒等待中的事务
         self._wakeup_waiting_transactions()
 
     def _abort_transactions_using_failed_site(self, site_id: int):
@@ -542,10 +533,9 @@ class TransactionManager:
 
         for tx_id, transaction in self.transactions.items():
             if transaction.status in [TransactionStatus.ACTIVE, TransactionStatus.WAITING]:
-                # 检查事务是否读取了该站点上的非复制变量
                 for var_id in transaction.read_set:
                     var_index = int(var_id[1:])
-                    if var_index % 2 == 1:  # 非复制变量
+                    if var_index % 2 == 1:
                         target_site_id = 1 + (var_index % 10)
                         if target_site_id == site_id:
                             transactions_to_abort.append(transaction)
@@ -554,7 +544,7 @@ class TransactionManager:
         for transaction in transactions_to_abort:
             self._abort_transaction(transaction, f"site {site_id} failed")
 
-    # ==================== Dump操作 ====================
+    # ==================== Dump operations ====================
 
     def dump(self):
         """
@@ -595,7 +585,7 @@ class TransactionManager:
         for result in results:
             print(result)
 
-    # ==================== 清理和状态 ====================
+    # ==================== Cleanup and status ====================
 
     def cleanup_finished_transactions(self):
         """

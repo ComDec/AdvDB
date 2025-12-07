@@ -48,7 +48,6 @@ class Site:
         Args/Returns: None
         Side effects: populates self.variables.
         """
-        # 添加所有复制变量（偶数索引）
         for i in range(2, 21, 2):
             variable_id = f"x{i}"
             initial_value = 10 * i
@@ -56,7 +55,6 @@ class Site:
                 variable_id, initial_value, is_replicated=True
             )
 
-        # 添加属于此站点的非复制变量（奇数索引）
         for i in range(1, 20, 2):
             target_site = 1 + (i % 10)
             if target_site == self.site_id:
@@ -84,12 +82,11 @@ class Site:
         """
         self.status = SiteStatus.UP
 
-        # 设置陈旧标志
         for variable_id, variable_copy in self.variables.items():
             if variable_copy.is_replicated:
-                variable_copy.set_stale()  # 复制变量标记为陈旧
+                variable_copy.set_stale()
             else:
-                variable_copy.set_readable()  # 非复制变量立即可读
+                variable_copy.set_readable()
 
     def has_variable(self, variable_id: str) -> bool:
         """Purpose: check if site holds variable. Author: Xi Wang. Args: variable_id. Returns: bool. Side effects: None."""
@@ -124,7 +121,6 @@ class Site:
         result = []
         result.append(f"site {self.site_id} -")
 
-        # 按变量名排序
         sorted_vars = sorted(self.variables.keys(), key=lambda x: int(x[1:]))
 
         for var_id in sorted_vars:

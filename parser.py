@@ -33,18 +33,14 @@ class Parser:
             (command, args) tuple; None if parsing fails
         Side effects: prints warning on unknown command
         """
-        # 移除空白和注释
         line = line.strip()
 
-        # 跳过空行
         if not line:
             return None
 
-        # 跳过注释（以//开头）
         if line.startswith("//"):
             return None
 
-        # 移除行内注释
         comment_pos = line.find("//")
         if comment_pos != -1:
             line = line[:comment_pos].strip()
@@ -102,7 +98,6 @@ class Parser:
         if match:
             return ("dump_variable", [match.group(1)])
 
-        # 未知指令
         print(f"Warning: Unknown command: {line}")
         return None
 
