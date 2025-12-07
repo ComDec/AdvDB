@@ -1,5 +1,5 @@
 """
-输入解析器 - 解析项目指令
+Parser - parses project commands.
 """
 
 import re
@@ -8,9 +8,7 @@ from typing import List, Optional, Tuple
 
 class Parser:
     """
-    Parser - 解析项目输入指令
-
-    支持的指令格式：
+    Supported commands:
     - begin(T1)
     - beginRO(T1)
     - R(T1, x1)
@@ -21,18 +19,19 @@ class Parser:
     - dump()
     - dump(1)
     - dump(x1)
+    - querystate()
     """
 
     @staticmethod
     def parse_line(line: str) -> Optional[Tuple[str, List]]:
         """
-        解析一行输入
-
+        Purpose: parse a single line of input.
+        Author: Xi Wang
         Args:
-            line: 输入行
-
+            line: input line
         Returns:
-            (command, args) 元组，如果解析失败则返回None
+            (command, args) tuple; None if parsing fails
+        Side effects: prints warning on unknown command
         """
         # 移除空白和注释
         line = line.strip()
@@ -89,6 +88,10 @@ class Parser:
         if line == "dump()":
             return ("dump", [])
 
+        # querystate()
+        if line == "querystate()":
+            return ("querystate", [])
+
         # dump(1)
         match = re.match(r"dump\((\d+)\)", line)
         if match:
@@ -106,13 +109,13 @@ class Parser:
     @staticmethod
     def parse_file(filename: str) -> List[Tuple[str, List]]:
         """
-        解析输入文件
-
+        Purpose: parse all commands from a file.
+        Author: Sihang Zhao
         Args:
-            filename: 输入文件路径
-
+            filename: input file path
         Returns:
-            指令列表
+            list of parsed commands
+        Side effects: prints errors on file issues
         """
         commands = []
 
@@ -134,10 +137,12 @@ class Parser:
     @staticmethod
     def parse_stdin() -> List[Tuple[str, List]]:
         """
-        从标准输入解析指令
-
+        Purpose: parse commands from stdin.
+        Author: Xi Wang
+        Args: None
         Returns:
-            指令列表
+            list of parsed commands
+        Side effects: reads from stdin; stops on EOF
         """
         commands = []
 

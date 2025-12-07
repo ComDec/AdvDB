@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>RepCRec Design & Compliance Report</title>
+  <style>
+    @page { size: A4; margin: 2.5cm 2cm 2cm 2cm; }
+    body { font-family: 'Georgia','Times New Roman',serif; font-size: 11pt; line-height: 1.55; color: #333; max-width: 100%; margin: 0 auto; }
+    h1 { color: #1a1a1a; font-size: 26pt; font-weight: bold; margin-top: 0; margin-bottom: 0.5em; padding-bottom: 0.25em; border-bottom: 3px solid #2c5aa0; }
+    h2 { color: #2c5aa0; font-size: 19pt; font-weight: bold; margin-top: 1.4em; margin-bottom: 0.5em; border-bottom: 2px solid #e0e0e0; padding-bottom: 0.15em; }
+    h3 { color: #34495e; font-size: 15pt; font-weight: bold; margin-top: 1.1em; margin-bottom: 0.4em; }
+    p  { margin-bottom: 0.7em; text-align: justify; }
+    ul { margin: 0.4em 0 1em 1.3em; }
+    li { margin-bottom: 0.25em; }
+    table { border-collapse: collapse; width: 100%; margin: 1em 0; }
+    th { background:#2c5aa0; color:#fff; padding:8px; text-align:left; }
+    td { border:1px solid #ddd; padding:8px; vertical-align: top; }
+    tr:nth-child(even) { background:#f9f9f9; }
+    code { background:#f5f5f5; border:1px solid #ddd; border-radius:3px; padding:2px 5px; font-family:'Courier New',monospace; color:#c7254e; }
+    .tag { display:inline-block; padding:2px 6px; border-radius:4px; font-size:9pt; color:#fff; background:#4caf50; margin-right:6px; }
+    .warn { background:#f39c12; }
+    .risk { background:#e74c3c; }
+  </style>
+</head>
+<body>
+
+  <h1>RepCRec Design & Compliance Report</h1>
+  <p><strong>Course:</strong> Advanced Database Systems &nbsp;|&nbsp; <strong>Date:</strong> 2025-12-07 &nbsp;|&nbsp; <strong>Authors:</strong> Xi Wang, Sihang Zhao</p>
+
+  <h2>Executive Summary</h2>
+  <p>This report presents the RepCRec implementation against <em>handDB2-4-11 §4.1</em> and <em>Requirment.txt</em>. The system delivers SSI over MVCC, Available Copies replication, failure/recovery with stale flags, English-only documentation, and explicit function headers (purpose/inputs/outputs/side effects). Recent fixes enforce continuous-uptime checks for replicated reads, abort on write-site failure before commit, provide the <code>querystate()</code> command, and keep required outputs aligned with the grading format.</p>
+
+  <h2>System Overview</h2>
+  <ul>
+    <li>20 variables (<code>x1..x20</code>), 10 sites. Even variables replicated to all sites; odd variables at site <code>1 + (i mod 10)</code>; initial value <code>10*i</code>.</li>
+    <li>Concurrency control: Serializable Snapshot Isolation via WW first-committer-wins and RW intersection checks.</li>
+    <li>Replication: Available Copies (ROWAA); commit-time broadcast to available replicas.</li>
+    <li>Failure model: site fail/recover; stale-flag on replicated copies until a fresh commit.</li>
+  </ul>
+
+  <h2>Architecture & Components</h2>
+  <ul>
+    <li><code>TransactionManager</code>: central, never fails; tracks transactions, sites, failure history, SSI validation, failure-driven aborts.</li>
+    <li><code>Site</code>: holds replicas; stale-flag recovery; per-replica readability.</li>
+    <li><code>VariableCopy</code>: MVCC versions; snapshot returns (value, commit_ts) for uptime validation.</li>
+    <li><code>Transaction</code>: read/write sets, write-target sites, waiting state, write-after-fail flag.</li>
+    <li><code>Parser</code>/<code>main</code>: command parsing/dispatch; commands: <code>begin</code>, <code>beginRO</code>, <code>R</code>, <code>W</code>, <code>end</code>, <code>fail</code>, <code>recover</code>, <code>dump</code>, <code>querystate</code>.</li>
+  </ul>
+
+  <h2>Algorithmic Design</h2>
+  <h3>MVCC Snapshot Read</h3>
+  <ul>
+    <li>Selects latest committed version with <code>commit_ts &lt; txn.start_ts</code>; returns value + commit_ts.</li>
+    <li>Read-your-own-write served from the workspace.</li>
+  </ul>
+
+  <h3>Available Copies & Uptime Validation</h3>
+  <ul>
+    <li>Odd variable: read its sole hosting site; wait if down.</li>
+    <li>Even variable: require a replica that stayed UP from version commit_ts to txn.start_ts. If all replicas fail this window, abort; otherwise wait when none are currently readable (e.g., stale after recovery).</li>
+    <li>Writes are deferred; commit propagates to all available hosts.</li>
+  </ul>
+
+  <h3>SSI Validation</h3>
+  <ul>
+    <li>WW conflict: first-committer-wins, abort on overlapping writes committed after txn start.</li>
+    <li>RW conflict: abort on intersections of (txn.read_set, committed.write_set) or (txn.write_set, committed.read_set) for commits after txn start.</li>
+  </ul>
+
+  <h3>Failure & Recovery</h3>
+  <ul>
+    <li>Write-after-fail rule: if any site planned for a write fails pre-commit, <code>end()</code> aborts.</li>
+    <li>Stale-flag: replicated copies unreadable after recovery until a new committed write; non-replicated copies readable immediately.</li>
+    <li>Failure history underpins uptime validation for replicated reads.</li>
+  </ul>
+
+  <h3>Required Outputs (grading format)</h3>
+  <ul>
+    <li><strong>Dump</strong>: every <code>dump()</code> prints committed values of all variable replicas at all sites, one line per site, variables sorted ascending by name; down sites are still printed and do not reflect writes while down. Example: <code>site 1 – x2: 6, x3: 2, ... x20: 3</code>.</li>
+    <li><strong>Reads</strong>: every read prints the value read, e.g., <code>x4: 5</code>.</li>
+    <li><strong>Transaction results</strong>: every <code>end(T)</code> prints <code>T1 commits</code> or <code>T1 aborts</code>.</li>
+    <li><strong>Other events</strong>: on commit/abort print transaction name; on write indicate affected sites (those up at commit); when a transaction waits due to a site failure (e.g., odd variable on a down site), print the wait event.</li>
+  </ul>
+
+  <h2>Compliance Checklist (handDB2-4-11 §4.1)</h2>
+  <table>
+    <tr><th>Item</th><th>Status</th><th>Notes</th></tr>
+    <tr><td>Data topology (20 vars, 10 sites, even replicated, odd at 1+(i mod 10), init 10*i)</td><td><span class="tag">Met</span></td><td><code>Site.initialize_variables()</code></td></tr>
+    <tr><td>SSI (WW first-committer-wins; RW dangerous-structure via intersections)</td><td><span class="tag">Met</span></td><td><code>_check_ww_conflict</code>, <code>_check_rw_conflict</code></td></tr>
+    <tr><td>Available Copies; commit-time broadcast writes</td><td><span class="tag">Met</span></td><td>Writes propagate at commit</td></tr>
+    <tr><td>Replicated read requires continuous UP from version commit to txn start; abort if all replicas disqualify</td><td><span class="tag">Met</span></td><td><code>_site_up_during</code> with disqualification logic</td></tr>
+    <tr><td>Stale-flag recovery for replicated copies</td><td><span class="tag">Met</span></td><td><code>Site.recover()</code> marks replicas unreadable</td></tr>
+    <tr><td>Abort if site written by txn fails before commit</td><td><span class="tag">Met</span></td><td><code>site_failed_after_write</code></td></tr>
+    <tr><td>Outputs: reads, commits/aborts, dump/querystate</td><td><span class="tag">Met</span></td><td><code>querystate()</code> added; dump retained</td></tr>
+    <tr><td>Function headers: purpose/inputs/outputs/side effects; English only</td><td><span class="tag">Met</span></td><td>Core code updated</td></tr>
+    <tr><td>Required outputs (dump/read/commit/abort/wait/affected sites)</td><td><span class="tag">Met</span></td><td>Formats stated above</td></tr>
+  </table>
+
+  <h2>Testing Strategy</h2>
+  <p>Existing scripts: <code>test_basic.txt</code>, <code>test_ww_conflict.txt</code>, <code>test_rw_conflict.txt</code>, <code>test_site_failure.txt</code>, <code>test_replicated.txt</code>, <code>test_snapshot.txt</code>, <code>test_readonly.txt</code>, <code>test_comprehensive.txt</code>.</p>
+  <p>Recommended additional cases with expected outcomes:</p>
+  <ul>
+    <li>All replicas down between last commit and txn start for an even variable → abort on read.</li>
+    <li>Txn writes; a written site fails before commit → abort at end(T).</li>
+    <li>Recovering site for replicated vars remains unreadable until a new commit arrives.</li>
+  </ul>
+
+
+  <h2>Authorship by Function</h2>
+  <p>Function headers in code carry authorship. Summary by component:</p>
+  <ul>
+    <li><strong>TransactionManager</strong>: Xi Wang (all TM functions, including init, tick, get_site, begin/beginRO, read, write, end, SSI checks, commit/abort helpers, failure/recovery handlers, dumps/status/query_state).</li>
+    <li><strong>Data Site</strong>: Xi Wang (__init__, fail, has_variable, write_variable, dump, __repr__); Sihang Zhao (initialize_variables, recover, get_variable, is_up, __str__).</li>
+    <li><strong>Variable Copy</strong>: Xi Wang (write, set_stale, set_readable, __str__); Sihang Zhao (__init__, read_snapshot, __repr__).</li>
+    <li><strong>Transaction</strong>: Xi Wang (__init__, set_waiting, abort, __str__); Sihang Zhao (read, write, add_site_written, set_active, commit, __repr__).</li>
+    <li><strong>Parser</strong>: Xi Wang (parse_line, parse_stdin); Sihang Zhao (parse_file).</li>
+    <li><strong>Main</strong>: Xi Wang (__init__, execute_command, run_from_stdin, main); Sihang Zhao (run_from_file, run_interactive).</li>
+  </ul>
+
+</body>
+</html>
+
