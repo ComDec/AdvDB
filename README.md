@@ -8,6 +8,7 @@ Distributed replicated database simulator implementing serializable snapshot iso
 ## Run
 - From a script: `python main.py <input_file>`
 - Interactive: `python main.py` then enter commands line by line.
+- ReproZip trace (from base environment): `mamba activate base && reprozip trace python main.py test_basic.txt` then `reprozip pack repcrec.rpz` to produce the `.rpz` bundle; unpack with `reprounzip directory setup repcrec.rpz run_dir` then `reprounzip directory run run_dir`.
 
 Supported commands follow the project spec: `begin(T1)`, `beginRO(T2)`, `R(T1, x4)`, `W(T1, x2, 50)`, `end(T1)`, `fail(3)`, `recover(3)`, `dump()`, `dump(2)`, `dump(x4)`. Lines starting with `//` are comments.
 
@@ -16,6 +17,7 @@ Each line advances logical time by one tick. Reads print `x#: value`, commits/ab
 ## Tests
 - Quick run: `./run_all_tests.sh`
 - Or individually: `python main.py test_basic.txt` (others: `test_ww_conflict.txt`, `test_rw_conflict.txt`, `test_snapshot.txt`, `test_site_failure.txt`, `test_replicated.txt`, `test_readonly.txt`, `test_comprehensive.txt`).
+- To capture a reproducible run, ensure you are in the `base` environment (`mamba activate base`) with `reprozip` installed, then run tests under `reprozip trace ...` as shown above.
 
 ## Notes
 - Data distribution: x1..x20; odd indexes live on a single site `1 + (i mod 10)`, even indexes on all 10 sites; initial value `10*i`.
