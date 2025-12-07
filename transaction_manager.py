@@ -1,5 +1,5 @@
 """
-TransactionManager类 - 中央事务管理器
+TransactionManager - central controller (never fails).
 """
 
 from typing import Dict, List, Optional, Tuple
@@ -11,48 +11,68 @@ from variable_copy import VariableCopy
 
 class TransactionManager:
     """
-    TransactionManager - 中央控制器，永不失败的单例对象
-
-    这是"上帝模式"控制器，管理所有事务、站点和全局状态
+    TransactionManager - singleton orchestrator; manages transactions, sites, and global time.
 
     Attributes:
-        sites: 10个Site对象的列表
-        transactions: 活跃事务字典，映射事务ID到Transaction对象
-        committed_transactions: 已提交事务列表，用于SSI验证
-        failure_history: 站点故障和恢复事件日志
-        current_timestamp: 全局逻辑时钟
+        sites: List[Site] (10 sites).
+        transactions: Active transaction map id -> Transaction.
+        committed_transactions: Committed transactions for SSI validation.
+        aborted_transactions: Aborted transactions list.
+        failure_history: List of (site_id, event, ts) for up/down events.
+        current_timestamp: Global logical clock.
     """
 
     def __init__(self):
+        """
+        Purpose: initialize transaction manager, sites, and clocks.
+        Author: Xi Wang
+        Args: None
+        Returns: None
+        Side effects: constructs sites and resets state.
+        """
         self.sites: List[Site] = []
         self.transactions: Dict[str, Transaction] = {}
         self.committed_transactions: List[Transaction] = []
         self.aborted_transactions: List[Transaction] = []
-        self.failure_history: List[Tuple[int, str, int]] = []  # (site_id, event, timestamp)
+        # (site_id, event, timestamp), event in {"up","down"}
+        self.failure_history: List[Tuple[int, str, int]] = []
         self.current_timestamp = 0
 
-        # 初始化10个站点
+        # initialize 10 sites with variables
         for i in range(1, 11):
             site = Site(i)
             site.initialize_variables()
             self.sites.append(site)
 
     def tick(self):
-        """时间推进一个单位"""
+        """
+        Purpose: advance logical clock by one.
+        Author: Xi Wang
+        Args: None
+        Returns: None
+        Side effects: increments current_timestamp.
+        """
         self.current_timestamp += 1
 
     def get_site(self, site_id: int) -> Site:
-        """获取指定ID的站点"""
-        return self.sites[site_id - 1]  # site_id从1开始，列表索引从0开始
+        """
+        Purpose: fetch site by id.
+        Author: Xi Wang
+        Args: site_id (1-based)
+        Returns: Site instance
+        Side effects: None.
+        """
+        return self.sites[site_id - 1]
 
-    # ==================== 事务操作 ====================
+    # ==================== Transaction operations ====================
 
     def begin(self, transaction_id: str):
         """
-        开始一个新事务
-
-        Args:
-            transaction_id: 事务ID (如 "T1")
+        Purpose: start a new read-write transaction.
+        Author: Xi Wang
+        Args: transaction_id (e.g., "T1")
+        Returns: None
+        Side effects: adds transaction to active map, prints begin.
         """
         transaction = Transaction(transaction_id, self.current_timestamp, is_read_only=False)
         self.transactions[transaction_id] = transaction
@@ -60,10 +80,11 @@ class TransactionManager:
 
     def begin_read_only(self, transaction_id: str):
         """
-        开始一个只读事务
-
-        Args:
-            transaction_id: 事务ID (如 "T1")
+        Purpose: start a new read-only transaction.
+        Author: Xi Wang
+        Args: transaction_id
+        Returns: None
+        Side effects: adds transaction; prints begin.
         """
         transaction = Transaction(transaction_id, self.current_timestamp, is_read_only=True)
         self.transactions[transaction_id] = transaction
@@ -71,13 +92,11 @@ class TransactionManager:
 
     def read(self, transaction_id: str, variable_id: str):
         """
-        读操作 R(T, x_i)
-
-        这是最复杂的操作之一，融合了MVCC、复制和故障处理
-
-        Args:
-            transaction_id: 事务ID
-            variable_id: 变量ID (如 "x1")
+        Purpose: process R(T, xi) with MVCC + replication + failure rules.
+        Author: Xi Wang
+        Args: transaction_id, variable_id (e.g., "x1")
+        Returns: None
+        Side effects: may block tx, abort tx, or print read value.
         """
         transaction = self.transactions.get(transaction_id)
 
@@ -85,72 +104,79 @@ class TransactionManager:
             return
 
         if transaction.status == TransactionStatus.WAITING:
-            # 事务正在等待，不处理新的读请求
             return
 
-        # 步骤1：检查本地写入（读己之写）
+        # Step 1: read-your-own-write
         if variable_id in transaction.write_set:
             value = transaction.write_set[variable_id]
             print(f"{transaction_id} reads {variable_id}: {value} (from local write)")
             return
 
-        # 步骤2：添加到读集合
+        # Step 2: record read
         transaction.read(variable_id)
 
-        # 步骤3：查找读取目标并处理故障
-        variable_index = int(variable_id[1:])  # 从"x1"中提取1
+        # Step 3: resolve target and failures
+        variable_index = int(variable_id[1:])
 
-        if variable_index % 2 == 1:  # 非复制变量（奇数索引）
+        if variable_index % 2 == 1:  # non-replicated
             target_site_id = 1 + (variable_index % 10)
             site = self.get_site(target_site_id)
 
             if not site.is_up():
-                # 站点Down，事务必须等待
                 transaction.set_waiting(variable_id)
                 print(f"{transaction_id} waits (site {target_site_id} is down)")
                 return
 
-            # 读取快照值
+            # snapshot read
             variable_copy = site.get_variable(variable_id)
-            snapshot_value = variable_copy.read_snapshot(transaction.start_timestamp)
+            snapshot_value, _ = variable_copy.read_snapshot(transaction.start_timestamp)
             print(
                 f"{transaction_id} reads {variable_id}: {snapshot_value} (from site {target_site_id})"
             )
 
-        else:  # 复制变量（偶数索引）
-            # 找到任何一个可用的站点
-            target_site = None
+        else:  # replicated
+            # find readable replica with uptime from commit_ts to txn start
+            candidates = []
+            disqualified_sites = 0
 
             for site in self.sites:
-                if site.is_up():
-                    variable_copy = site.get_variable(variable_id)
-                    if variable_copy and variable_copy.is_readable:
-                        target_site = site
-                        break
+                if not site.has_variable(variable_id):
+                    continue
+                variable_copy = site.get_variable(variable_id)
+                value, commit_ts = variable_copy.read_snapshot(transaction.start_timestamp)
 
-            if target_site is None:
-                # 所有副本都不可用，事务等待
-                transaction.set_waiting(variable_id)
-                print(f"{transaction_id} waits (no available copy of {variable_id})")
+                # site must be UP for [commit_ts, txn_start)
+                if not self._site_up_during(site.site_id, commit_ts, transaction.start_timestamp):
+                    disqualified_sites += 1
+                    continue
+
+                if site.is_up() and variable_copy and variable_copy.is_readable:
+                    candidates.append((site, value))
+
+            if candidates:
+                target_site, snapshot_value = candidates[0]
+                print(
+                    f"{transaction_id} reads {variable_id}: {snapshot_value} (from site {target_site.site_id})"
+                )
                 return
 
-            # 读取快照值
-            variable_copy = target_site.get_variable(variable_id)
-            snapshot_value = variable_copy.read_snapshot(transaction.start_timestamp)
-            print(
-                f"{transaction_id} reads {variable_id}: {snapshot_value} (from site {target_site.site_id})"
-            )
+            # all replicas disqualified by downtime -> abort
+            total_sites_with_var = len([s for s in self.sites if s.has_variable(variable_id)])
+            if disqualified_sites == total_sites_with_var and total_sites_with_var > 0:
+                self._abort_transaction(transaction, f"{variable_id} lost before T started")
+                return
+
+            # otherwise wait (e.g., just recovered but stale)
+            transaction.set_waiting(variable_id)
+            print(f"{transaction_id} waits (no available copy of {variable_id})")
 
     def write(self, transaction_id: str, variable_id: str, value: int):
         """
-        写操作 W(T, x_i, v)
-
-        这是一个延迟写入操作，只更新事务的私有工作区
-
-        Args:
-            transaction_id: 事务ID
-            variable_id: 变量ID
-            value: 要写入的值
+        Purpose: handle W(T, xi, v) as deferred write to workspace.
+        Author: Xi Wang
+        Args: transaction_id, variable_id, value
+        Returns: None
+        Side effects: updates tx workspace, records target sites, prints write.
         """
         transaction = self.transactions.get(transaction_id)
 
@@ -160,18 +186,21 @@ class TransactionManager:
         if transaction.status == TransactionStatus.WAITING:
             return
 
-        # 只更新私有工作区，不实际写入数据库
+        # staging only
         transaction.write(variable_id, value)
+        # 记录本次写会影响到的站点（用于站点失败后的提交时检查）
+        target_sites = self._target_sites_for_write(variable_id)
+        for site_id in target_sites:
+            transaction.add_site_written(site_id)
         print(f"{transaction_id} writes {variable_id}: {value} (to local workspace)")
 
     def end(self, transaction_id: str):
         """
-        结束事务（提交或中止）
-
-        这是所有冲突解决逻辑的中心
-
-        Args:
-            transaction_id: 事务ID
+        Purpose: finalize a transaction (commit or abort) with SSI and failure checks.
+        Author: Xi Wang
+        Args: transaction_id
+        Returns: None
+        Side effects: may abort/commit, print events, wake waiting tx.
         """
         transaction = self.transactions.get(transaction_id)
 
@@ -187,17 +216,22 @@ class TransactionManager:
             self._abort_transaction(transaction, "cannot commit while waiting")
             return
 
-        # 只读事务直接提交（不需要验证）
+        # read-only commits immediately
         if transaction.is_read_only:
             self._commit_transaction(transaction)
             return
 
-        # 验证1：WW冲突（First Committer Wins）
+        # 写入过的站点若在提交前失败，则必须中止
+        if transaction.site_failed_after_write:
+            self._abort_transaction(transaction, "site failed after write")
+            return
+
+        # WW conflict (First Committer Wins)
         if self._check_ww_conflict(transaction):
             self._abort_transaction(transaction, "WW conflict")
             return
 
-        # 验证2：RW冲突（SSI验证）
+        # RW conflict (SSI)
         if self._check_rw_conflict(transaction):
             self._abort_transaction(transaction, "RW conflict (SSI)")
             return
@@ -205,25 +239,20 @@ class TransactionManager:
         # 所有检查通过，提交事务
         self._commit_transaction(transaction)
 
-    # ==================== SSI验证 ====================
+    # ==================== SSI validation ====================
 
     def _check_ww_conflict(self, transaction: Transaction) -> bool:
         """
-        检查WW冲突（写-写冲突）
-
-        First Committer Wins规则：
-        如果另一个事务在T开始后提交，且写集合有交集，则T中止
-
-        Args:
-            transaction: 要检查的事务
-
-        Returns:
-            True表示有冲突（应中止），False表示无冲突
+        Purpose: detect WW conflict (First Committer Wins).
+        Author: Xi Wang
+        Args: transaction
+        Returns: True if conflict => should abort, else False.
+        Side effects: None.
         """
         for committed_tx in self.committed_transactions:
-            # 只检查在T开始后提交的事务
+        # only commits after T started
             if committed_tx.commit_timestamp > transaction.start_timestamp:
-                # 检查写集合是否有交集
+                # intersect write sets
                 write_intersection = set(transaction.write_set.keys()) & set(
                     committed_tx.write_set.keys()
                 )
@@ -234,44 +263,40 @@ class TransactionManager:
 
     def _check_rw_conflict(self, transaction: Transaction) -> bool:
         """
-        检查RW冲突（读-写冲突）
-
-        SSI验证：检测"危险结构"或RW依赖
-
-        Args:
-            transaction: 要检查的事务
-
-        Returns:
-            True表示有冲突（应中止），False表示无冲突
+        Purpose: detect RW conflicts for SSI (dangerous structure).
+        Author: Xi Wang
+        Args: transaction
+        Returns: True if conflict => abort, else False.
+        Side effects: None.
         """
         for committed_tx in self.committed_transactions:
-            # 只检查在T开始后提交的事务
+            # only commits after T started
             if committed_tx.commit_timestamp > transaction.start_timestamp:
-                # 检查1：committed_tx是否写入了T读取过的内容？
+                # check 1: committed_tx wrote something T read
                 read_write_intersection = transaction.read_set & set(committed_tx.write_set.keys())
                 if read_write_intersection:
                     return True  # 发现RW冲突
 
-                # 检查2：committed_tx是否读取了T写入的内容？
+                # check 2: committed_tx read something T wrote
                 write_read_intersection = set(transaction.write_set.keys()) & committed_tx.read_set
                 if write_read_intersection:
                     return True  # 发现RW冲突
 
         return False  # 无冲突
 
-    # ==================== 提交和中止 ====================
+    # ==================== Commit & abort ====================
 
     def _commit_transaction(self, transaction: Transaction):
         """
-        提交事务
-
-        Args:
-            transaction: 要提交的事务
+        Purpose: commit a transaction and apply writes.
+        Author: Xi Wang
+        Args: transaction
+        Returns: None
+        Side effects: sets commit ts, writes to sites, records commit, wakes waiters.
         """
-        # 分配提交时间戳
         transaction.commit(self.current_timestamp)
 
-        # 应用写入到所有可用站点
+        # apply writes to available sites
         for variable_id, value in transaction.write_set.items():
             variable_index = int(variable_id[1:])
 
@@ -287,20 +312,20 @@ class TransactionManager:
                     if site.is_up() and site.has_variable(variable_id):
                         site.write_variable(variable_id, transaction.commit_timestamp, value)
 
-        # 记录提交
+        # record commit
         self.committed_transactions.append(transaction)
         print(f"{transaction.id} commits")
 
-        # 唤醒等待中的事务
+        # wake waiting tx
         self._wakeup_waiting_transactions()
 
     def _abort_transaction(self, transaction: Transaction, reason: str = ""):
         """
-        中止事务
-
-        Args:
-            transaction: 要中止的事务
-            reason: 中止原因
+        Purpose: abort transaction with optional reason.
+        Author: Xi Wang
+        Args: transaction, reason
+        Returns: None
+        Side effects: status -> ABORTED, prints, wakes waiters.
         """
         transaction.abort()
         self.aborted_transactions.append(transaction)
@@ -313,11 +338,38 @@ class TransactionManager:
         # 唤醒等待中的事务
         self._wakeup_waiting_transactions()
 
+    def _target_sites_for_write(self, variable_id: str) -> List[int]:
+        """
+        Purpose: identify sites that would be written (tracking for failure rule).
+        Author: Xi Wang
+        Args: variable_id
+        Returns: list of site ids
+        Side effects: None.
+        """
+        variable_index = int(variable_id[1:])
+        if variable_index % 2 == 1:
+            return [1 + (variable_index % 10)]
+        return [site.site_id for site in self.sites if site.is_up() and site.has_variable(variable_id)]
+
+    def _site_up_during(self, site_id: int, start_ts: int, end_ts: int) -> bool:
+        """
+        Purpose: check site stayed UP in (start_ts, end_ts].
+        Author: Xi Wang
+        Args: site_id, start_ts, end_ts
+        Returns: bool
+        Side effects: None.
+        """
+        for sid, event, ts in self.failure_history:
+            if sid != site_id:
+                continue
+            if start_ts < ts <= end_ts and event == "down":
+                return False
+        return True
+
     def _wakeup_waiting_transactions(self):
         """
-        唤醒等待中的事务
-
-        当有事务提交或中止时，尝试重新执行等待中的事务
+        Purpose: wake waiting transactions; retry blocked read if any.
+        Author: Xi Wang
         """
         for tx_id, transaction in self.transactions.items():
             if transaction.status == TransactionStatus.WAITING:
@@ -330,10 +382,11 @@ class TransactionManager:
 
     def fail(self, site_id: int):
         """
-        站点失败
-
-        Args:
-            site_id: 站点ID (1-10)
+        Purpose: handle site failure.
+        Author: Xi Wang
+        Args: site_id (1-10)
+        Returns: None
+        Side effects: marks site DOWN, logs failure, flags transactions for abort, aborts readers of odd vars on that site.
         """
         site = self.get_site(site_id)
         site.fail()
@@ -343,17 +396,22 @@ class TransactionManager:
 
         print(f"Site {site_id} fails")
 
+        # 标记写过该站点的事务在提交时必须中止
+        for transaction in self.transactions.values():
+            if transaction.status in [TransactionStatus.ACTIVE, TransactionStatus.WAITING]:
+                if site_id in transaction.sites_written_to:
+                    transaction.site_failed_after_write = True
+
         # 中止所有访问了该站点的活跃事务
         self._abort_transactions_using_failed_site(site_id)
 
     def recover(self, site_id: int):
         """
-        站点恢复
-
-        实现"Stale Flag Algorithm"
-
-        Args:
-            site_id: 站点ID (1-10)
+        Purpose: handle site recovery with stale-flag algorithm.
+        Author: Xi Wang
+        Args: site_id (1-10)
+        Returns: None
+        Side effects: marks site UP, sets stale flags, logs recovery, wakes waiting tx.
         """
         site = self.get_site(site_id)
         site.recover()
@@ -368,10 +426,11 @@ class TransactionManager:
 
     def _abort_transactions_using_failed_site(self, site_id: int):
         """
-        中止所有使用了失败站点的活跃事务
-
-        Args:
-            site_id: 失败的站点ID
+        Purpose: abort active/waiting transactions that read odd variables on failed site.
+        Author: Xi Wang
+        Args: site_id
+        Returns: None
+        Side effects: aborts affected transactions.
         """
         transactions_to_abort = []
 
@@ -392,17 +451,35 @@ class TransactionManager:
     # ==================== Dump操作 ====================
 
     def dump(self):
-        """打印所有站点上所有变量的值"""
+        """
+        Purpose: print committed values of all variables at all sites.
+        Author: Xi Wang
+        Args: None
+        Returns: None
+        Side effects: writes dump output to stdout.
+        """
         for site in self.sites:
             print(site.dump())
 
     def dump_site(self, site_id: int):
-        """打印指定站点上所有变量的值"""
+        """
+        Purpose: print committed values of all variables at one site.
+        Author: Xi Wang
+        Args: site_id
+        Returns: None
+        Side effects: writes dump output to stdout.
+        """
         site = self.get_site(site_id)
         print(site.dump())
 
     def dump_variable(self, variable_id: str):
-        """打印所有站点上指定变量的值"""
+        """
+        Purpose: print committed values of a variable across sites.
+        Author: Xi Wang
+        Args: variable_id
+        Returns: None
+        Side effects: writes dump output to stdout.
+        """
         results = []
         for site in self.sites:
             if site.has_variable(variable_id):
@@ -415,7 +492,13 @@ class TransactionManager:
     # ==================== 清理和状态 ====================
 
     def cleanup_finished_transactions(self):
-        """清理已完成的事务（提交或中止的）"""
+        """
+        Purpose: remove finished (committed/aborted) transactions from active map.
+        Author: Xi Wang
+        Args: None
+        Returns: None
+        Side effects: prunes self.transactions.
+        """
         finished = []
         for tx_id, transaction in self.transactions.items():
             if transaction.status in [TransactionStatus.COMMITTED, TransactionStatus.ABORTED]:
@@ -425,7 +508,13 @@ class TransactionManager:
             del self.transactions[tx_id]
 
     def print_status(self):
-        """打印系统状态（用于调试）"""
+        """
+        Purpose: print concise TM status (debug).
+        Author: Xi Wang
+        Args: None
+        Returns: None
+        Side effects: writes status to stdout.
+        """
         print(f"\n=== System Status at time {self.current_timestamp} ===")
         print(
             f"Active transactions: {len([t for t in self.transactions.values() if t.status == TransactionStatus.ACTIVE])}"
@@ -437,3 +526,16 @@ class TransactionManager:
         print(f"Aborted transactions: {len(self.aborted_transactions)}")
         print(f"Sites up: {len([s for s in self.sites if s.is_up()])}/10")
         print("=" * 50)
+
+    def query_state(self):
+        """
+        Enhanced debug output including per-site dumps.
+        Author: Xi Wang
+        Args: None
+        Returns: None
+        Side effects: writes detailed state to stdout.
+        """
+        self.print_status()
+        for site in self.sites:
+            status = "UP" if site.is_up() else "DOWN"
+            print(f"Site {site.site_id} [{status}] -> {site.dump()}")

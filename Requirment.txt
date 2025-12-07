@@ -1,0 +1,179 @@
+Here is the comprehensive requirement specification and implementation guide for the **RepCRec (Replicated Concurrency Control and Recovery)** project, rewritten in English.
+
+Given your background as a CS Ph.D. student, I have structured this into a **technical specification** (for requirements) and an **architectural guide** (for implementation and documentation).
+
+---
+
+# Part 1: Requirements Specification (The "What")
+
+### 1. System Overview
+You are building a distributed database simulation with a centralized **Transaction Manager (TM)** and 10 distributed **Sites (Data Managers)**.
+* **Concurrency Control:** Serializable Snapshot Isolation (SSI).
+* **Replication Protocol:** Available Copies (AC).
+* **Failure Model:** Sites fail and recover; volatile memory is lost on failure.
+
+### 2. Data Topology
+* **Variables:** $x_1, \dots, x_{20}$.
+* **Sites:** Site 1 to Site 10.
+* **Distribution Rules:**
+    * **Even Index ($x_2, x_4 \dots$):** Replicated on **ALL** 10 sites.
+    * **Odd Index ($x_1, x_3 \dots$):** Located on **one** specific site.
+        * Site ID = $1 + (\text{index} \pmod{10})$.
+* **Initialization:** $x_i = 10 \times i$ (e.g., $x_4 = 40$).
+
+### 3. Key Transaction Rules
+* **Snapshot Read:** Transaction $T$ reads the version of $x$ committed **before** $T$ began.
+* **Write Rule:** $T$ writes to **all** sites that are currently **UP**.
+* **Commit Validation (SSI):** $T$ aborts if:
+    1.  **First Committer Wins:** $T$ tries to commit a write to $x$, but another transaction committed a write to $x$ after $T$ began.
+    2.  **Dangerous Structure:** A cycle exists in the serialization graph with two consecutive RW (Read-Write) dependency edges.
+    3.  **Failure during Write:** $T$ wrote to site $S$, and $S$ failed before $T$ committed.
+
+### 4. Failure & Recovery Rules
+* **History Check:** To read a replicated variable $x$ from site $S$, site $S$ must have been **continuously UP** since the version of $x$ was committed.
+* **Recovery Constraint:** When site $S$ recovers:
+    * Non-replicated variables are immediately readable.
+    * Replicated variables are **NOT readable** until a new transaction commits a write to them on $S$ (the site needs to "catch up" or be deemed fresh).
+
+---
+
+# Part 2: Implementation Guide (The "How")
+
+This section outlines how to structure your code (likely in Python or Java) to handle the complexity of SSI and Available Copies.
+
+## 2.1 Class Design
+
+You should adopt an Object-Oriented approach. Avoid writing everything in one massive file.
+
+### A. Class: `Transaction`
+Holds the state of a single transaction.
+* **Fields:**
+    * `ID` (e.g., "T1")
+    * `startTime`: Integer (timestamp).
+    * `status`: (Active, Aborted, Committed).
+    * `snapshot`: Map of variable names to values (cache of what it has read/written).
+    * `sitesAccessed`: List of site IDs this transaction has touched (for failure checking).
+    * `isReadOnly`: Boolean.
+
+### B. Class: `VariableVersion` (The Data Unit)
+Since you need MVCC (Multi-Version Concurrency Control) for Snapshot Isolation, don't just store an integer.
+* **Fields:**
+    * `value`: The integer value.
+    * `commitTime`: When this version was written.
+    * `writtenBy`: Which transaction created this version.
+
+### C. Class: `Site` (Data Manager)
+Represents one of the 10 nodes.
+* **Fields:**
+    * `siteId`: 1-10.
+    * `status`: (UP, DOWN).
+    * `data`: A Dictionary/Map: `{ "x2": [List of VariableVersion], "x4": [...] }`.
+    * `lockTable`: (Optional, depending on implementation style, but SSI usually relies on a global graph. However, you need to track local writes).
+    * `failHistory`: A log of when this site failed and recovered.
+* **Methods:**
+    * `fail()`, `recover()`.
+    * `read_version(variable, timestamp)`: Returns the version with the highest `commitTime` $\le$ `timestamp`.
+    * `can_read(variable, version_commit_time, query_time)`: **Crucial.** Checks if the site was down at any point between `version_commit_time` and `query_time`.
+
+### D. Class: `TransactionManager` (The Controller)
+The entry point that parses input and manages global state.
+* **Fields:**
+    * `globalClock`: Integer (increments on new lines).
+    * `siteMap`: Map of ID $\to$ `Site` object.
+    * `activeTransactions`: List of `Transaction` objects.
+    * `serializationGraph`: Directed graph to track RW dependencies for SSI validation.
+
+## 2.2 Algorithm Logic Details
+
+### Step 1: Handling `Begin(T)`
+* Set $T$.startTime = `globalClock`.
+* Initialize $T$ in `activeTransactions`.
+
+### Step 2: Handling `Read(T, x)` (The "Available Copies" Logic)
+1.  Identify which sites hold $x$.
+2.  If $x$ is **not replicated** (odd): Check the specific site. If down $\to$ Wait. If up $\to$ Read.
+3.  If $x$ is **replicated** (even):
+    * Iterate through ALL sites containing $x$.
+    * Find a site $S$ that is **UP**.
+    * Retrieve the version $V$ committed at time $t_c < T.startTime$.
+    * **Validity Check:** Verify if site $S$ was continuously up from $t_c$ to $T.startTime$.
+    * If check passes $\to$ Return value.
+    * If ALL sites fail the check $\to$ $T$ must Abort (it cannot guarantee it's reading consistent data).
+
+### Step 3: Handling `Write(T, x, v)`
+1.  Identify all sites holding $x$.
+2.  Write $v$ to a temporary "write set" or "buffer" inside transaction object $T$.
+3.  **Note:** Do not update the actual `Site` data list yet. Wait for commit.
+4.  Record that $T$ attempted to write to these sites (required for the failure abort rule).
+
+### Step 4: The `End(T)` / Commit Phase (SSI Logic)
+This is where the magic happens. You must validate before applying writes.
+
+**Validation Checks:**
+1.  **Site Failure:** Did any site $T$ wrote to fail since $T$ accessed it? If yes $\to$ **Abort**.
+2.  **First Committer Wins:** Check if any variable $x$ in $T$'s write-set was updated by another transaction $T_{other}$ such that $T_{other}.commitTime > T.startTime$. If yes $\to$ **Abort**.
+3.  **Serialization Graph (SSI):**
+    * Construct/Update a graph where nodes are transactions.
+    * Edge $T_1 \to T_2$ exists if there is a conflict.
+    * Specifically, look for **RW-dependencies** (Anti-dependencies): $T_1$ reads a version of $x$, and $T_2$ creates a newer version of $x$.
+    * **Rule:** If you detect a cycle containing two consecutive RW edges (e.g., $T_1 \xrightarrow{RW} T_2 \xrightarrow{RW} T_3 \dots \to T_1$), one must abort.
+    * *Simplification for this project:* Since it's a simulation, you can maintain a conflict list. If $T$ is about to commit, check if it creates a dangerous structure.
+
+**If Validation Passes:**
+* Apply writes to actual Sites (create new `VariableVersions` with `commitTime` = current clock).
+* Print "T commits".
+* Update Site availability for replicated variables (set them as "readable" again if the site just recovered).
+
+---
+
+# Part 3: Design Document Guide
+
+The grader explicitly asked for a design document. This is worth points. Do not treat it as an afterthought.
+
+### Structure of the Document
+
+**1. Introduction**
+* Briefly state the goal: A distributed database implementing SSI and Available Copies.
+* Mention the language/tools used (e.g., Python 3.9, Reprozip).
+
+**2. System Architecture (The Diagram)**
+* **Draw a Block Diagram:** Show the TM connected to 10 Sites. Show the flow of "Input $\to$ TM $\to$ Logic $\to$ Site".
+* **Description:** "The system is divided into a centralized TM and distributed DMs. The TM handles parsing and routing..."
+
+**3. Component Design**
+* List your classes (`Transaction`, `Site`, `LockManager/Graph`).
+* **Crucial:** Explain the *responsibility* of each.
+    * *Example:* "The `Site` class maintains a history of failure events (`failHistory`) to validate the 'read-once' rule for replicated data."
+
+**4. Algorithm Implementation (The "Why")**
+* **Concurrency Control:** Explain how you detect conflicts. Did you use a graph? Did you use a strict timestamp comparison?
+    * *Text:* "We implement SSI by detecting RW-dependency cycles. When `end(T)` is called, we scan for..."
+* **Replication & Recovery:** Explain the logic for the "Wait" vs. "Abort" decisions.
+    * *Text:* "For replicated variables, we enforce the rule that a recovering site cannot serve reads until a new write commits. This is tracked via a `readable_flag` in the Site class..."
+
+**5. Testing Strategy**
+* Describe how you tested edge cases.
+    * Case A: Site failure during a transaction.
+    * Case B: All sites down.
+    * Case C: The specific RW-RW cycle in SSI.
+
+---
+
+# Part 4: Final Deliverables Checklist
+
+Before you submit, ensure you have these items:
+
+1.  **Source Code:**
+    * Must have **Header Comments** for every function (Purpose, Inputs, Outputs, Side Effects).
+    * Must be clean and readable.
+2.  **Design Document (PDF):**
+    * Follow the structure above. Keep it under 3 pages of text + diagrams.
+3.  **Reprozip Package:**
+    * The project requires **Reprozip**. This packages your Linux environment (libraries, dependencies) so the grader can run it anywhere.
+    * Command: `reprozip trace python3 main.py < input.txt` then `reprozip pack output.rpz`.
+4.  **Testing Scripts:**
+    * Create 3-5 custom input files (`test1.txt`, `test2.txt`) covering the edge cases mentioned above.
+    * Write a simplified expected output for them.
+
+### Next Step for You:
+**Would you like me to generate a Python code skeleton (class structure and method stubs) to get you started immediately?** I can lay out the `TransactionManager` and `Site` classes for you.

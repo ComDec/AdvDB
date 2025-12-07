@@ -1,5 +1,5 @@
 """
-主程序入口 - RepCRec分布式并发控制与恢复系统
+Entry point - RepCRec distributed concurrency control & recovery system.
 """
 
 import sys
@@ -10,21 +10,26 @@ from transaction_manager import TransactionManager
 
 class RepCRec:
     """
-    RepCRec - 分布式复制并发控制与恢复系统
-
-    主程序类，负责初始化系统并执行命令
+    RepCRec - orchestrates TransactionManager and dispatches commands.
     """
 
     def __init__(self):
+        """
+        Purpose: construct RepCRec facade.
+        Author: Xi Wang
+        Args: None
+        Returns: None
+        Side effects: instantiates TransactionManager.
+        """
         self.tm = TransactionManager()
 
     def execute_command(self, command: str, args: list):
         """
-        执行单个命令
-
-        Args:
-            command: 命令名称
-            args: 命令参数
+        Purpose: dispatch one parsed command to TM.
+        Author: Xi Wang
+        Args: command name; args list.
+        Returns: None
+        Side effects: executes TM operations and prints outputs.
         """
         if command == "begin":
             self.tm.begin(args[0])
@@ -56,15 +61,19 @@ class RepCRec:
         elif command == "dump_variable":
             self.tm.dump_variable(args[0])
 
+        elif command == "querystate":
+            self.tm.query_state()
+
         else:
             print(f"Unknown command: {command}")
 
     def run_from_file(self, filename: str):
         """
-        从文件运行命令
-
-        Args:
-            filename: 输入文件路径
+        Purpose: run commands from file.
+        Author: Sihang Zhao
+        Args: filename
+        Returns: None
+        Side effects: executes commands sequentially with time ticks.
         """
         commands = Parser.parse_file(filename)
 
@@ -89,7 +98,13 @@ class RepCRec:
         print(f"  Aborted transactions: {len(self.tm.aborted_transactions)}")
 
     def run_from_stdin(self):
-        """从标准输入运行命令"""
+        """
+        Purpose: run commands from stdin.
+        Author: Xi Wang
+        Args: None
+        Returns: None
+        Side effects: executes commands with time ticks.
+        """
         commands = Parser.parse_stdin()
 
         if not commands:
@@ -108,7 +123,13 @@ class RepCRec:
         print("\n=== Execution completed ===")
 
     def run_interactive(self):
-        """交互式运行"""
+        """
+        Purpose: interactive REPL.
+        Author: Sihang Zhao
+        Args: None
+        Returns: None
+        Side effects: executes commands with time ticks.
+        """
         print("=== RepCRec Interactive Mode ===")
         print("Enter commands one at a time (or 'quit' to exit):\n")
 
@@ -142,7 +163,13 @@ class RepCRec:
 
 
 def main():
-    """主函数"""
+    """
+    Purpose: CLI entry.
+    Author: Xi Wang
+    Args: None
+    Returns: None
+    Side effects: launches file or interactive execution.
+    """
     recrcrec = RepCRec()
 
     if len(sys.argv) > 1:
