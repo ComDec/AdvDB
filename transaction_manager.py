@@ -2,7 +2,7 @@
 TransactionManager - central controller (never fails).
 """
 
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Set, Tuple
 
 from data_site import Site, SiteStatus
 from transaction import Transaction, TransactionStatus
@@ -36,6 +36,7 @@ class TransactionManager:
         self.aborted_transactions: List[Transaction] = []
         # (site_id, event, timestamp), event in {"up","down"}
         self.failure_history: List[Tuple[int, str, int]] = []
+        self.rw_edges_to: Dict[str, Set[str]] = {}
         self.current_timestamp = 0
 
         # initialize 10 sites with variables
@@ -47,7 +48,7 @@ class TransactionManager:
     def tick(self):
         """
         Purpose: advance logical clock by one.
-        Author: Xi Wang
+        Author: Sihang Zhao
         Args: None
         Returns: None
         Side effects: increments current_timestamp.
@@ -69,7 +70,7 @@ class TransactionManager:
     def begin(self, transaction_id: str):
         """
         Purpose: start a new read-write transaction.
-        Author: Xi Wang
+        Author: Sihang Zhao
         Args: transaction_id (e.g., "T1")
         Returns: None
         Side effects: adds transaction to active map, prints begin.
@@ -93,7 +94,7 @@ class TransactionManager:
     def read(self, transaction_id: str, variable_id: str):
         """
         Purpose: process R(T, xi) with MVCC + replication + failure rules.
-        Author: Xi Wang
+        Author: Sihang Zhao
         Args: transaction_id, variable_id (e.g., "x1")
         Returns: None
         Side effects: may block tx, abort tx, or print read value.
@@ -104,71 +105,66 @@ class TransactionManager:
             return
 
         if transaction.status == TransactionStatus.WAITING:
+            transaction.queue_operation(("read", variable_id))
+            print(f"{transaction_id} queued read {variable_id} while waiting")
             return
+
+        variable_index = int(variable_id[1:])
 
         # Step 1: read-your-own-write
         if variable_id in transaction.write_set:
+            transaction.read(variable_id)
             value = transaction.write_set[variable_id]
-            print(f"{transaction_id} reads {variable_id}: {value} (from local write)")
+            print(f"{variable_id}: {value}")
             return
 
-        # Step 2: record read
-        transaction.read(variable_id)
-
-        # Step 3: resolve target and failures
-        variable_index = int(variable_id[1:])
-
-        if variable_index % 2 == 1:  # non-replicated
+        # non-replicated variable
+        if variable_index % 2 == 1:
             target_site_id = 1 + (variable_index % 10)
             site = self.get_site(target_site_id)
 
             if not site.is_up():
-                transaction.set_waiting(variable_id)
-                print(f"{transaction_id} waits (site {target_site_id} is down)")
+                transaction.set_waiting(variable_id, ("read", variable_id))
+                print(f"{transaction_id} waits for {variable_id} (site {target_site_id} down)")
                 return
 
-            # snapshot read
             variable_copy = site.get_variable(variable_id)
             snapshot_value, _ = variable_copy.read_snapshot(transaction.start_timestamp)
-            print(
-                f"{transaction_id} reads {variable_id}: {snapshot_value} (from site {target_site_id})"
-            )
+            transaction.read(variable_id)
+            print(f"{variable_id}: {snapshot_value}")
+            return
 
-        else:  # replicated
-            # find readable replica with uptime from commit_ts to txn start
-            candidates = []
-            disqualified_sites = 0
+        # replicated variable
+        candidates = []
+        disqualified_sites = 0
 
-            for site in self.sites:
-                if not site.has_variable(variable_id):
-                    continue
-                variable_copy = site.get_variable(variable_id)
-                value, commit_ts = variable_copy.read_snapshot(transaction.start_timestamp)
+        for site in self.sites:
+            if not site.has_variable(variable_id):
+                continue
+            variable_copy = site.get_variable(variable_id)
+            value, commit_ts = variable_copy.read_snapshot(transaction.start_timestamp)
 
-                # site must be UP for [commit_ts, txn_start)
-                if not self._site_up_during(site.site_id, commit_ts, transaction.start_timestamp):
-                    disqualified_sites += 1
-                    continue
+            # site must be UP for [commit_ts, txn_start)
+            if not self._site_up_during(site.site_id, commit_ts, transaction.start_timestamp):
+                disqualified_sites += 1
+                continue
 
-                if site.is_up() and variable_copy and variable_copy.is_readable:
-                    candidates.append((site, value))
+            if site.is_up() and variable_copy.is_readable:
+                candidates.append((commit_ts, site.site_id, value))
 
-            if candidates:
-                target_site, snapshot_value = candidates[0]
-                print(
-                    f"{transaction_id} reads {variable_id}: {snapshot_value} (from site {target_site.site_id})"
-                )
-                return
+        if candidates:
+            commit_ts, site_id, snapshot_value = max(candidates, key=lambda c: c[0])
+            transaction.read(variable_id)
+            print(f"{variable_id}: {snapshot_value}")
+            return
 
-            # all replicas disqualified by downtime -> abort
-            total_sites_with_var = len([s for s in self.sites if s.has_variable(variable_id)])
-            if disqualified_sites == total_sites_with_var and total_sites_with_var > 0:
-                self._abort_transaction(transaction, f"{variable_id} lost before T started")
-                return
+        total_sites_with_var = len([s for s in self.sites if s.has_variable(variable_id)])
+        if disqualified_sites == total_sites_with_var and total_sites_with_var > 0:
+            self._abort_transaction(transaction, f"no consistent copy of {variable_id}")
+            return
 
-            # otherwise wait (e.g., just recovered but stale)
-            transaction.set_waiting(variable_id)
-            print(f"{transaction_id} waits (no available copy of {variable_id})")
+        transaction.set_waiting(variable_id, ("read", variable_id))
+        print(f"{transaction_id} waits for {variable_id} (no available copy)")
 
     def write(self, transaction_id: str, variable_id: str, value: int):
         """
@@ -183,16 +179,43 @@ class TransactionManager:
         if not transaction or transaction.status == TransactionStatus.ABORTED:
             return
 
-        if transaction.status == TransactionStatus.WAITING:
+        if transaction.is_read_only:
+            self._abort_transaction(transaction, "read-only transaction attempted a write")
             return
 
-        # staging only
+        if transaction.status == TransactionStatus.WAITING:
+            transaction.queue_operation(("write", variable_id, value))
+            print(f"{transaction_id} queued write {variable_id} while waiting")
+            return
+
+        variable_index = int(variable_id[1:])
+
+        # non-replicated variable must wait for its unique site
+        if variable_index % 2 == 1:
+            target_site_id = 1 + (variable_index % 10)
+            site = self.get_site(target_site_id)
+            if not site.is_up():
+                transaction.set_waiting(variable_id, ("write", variable_id, value))
+                print(f"{transaction_id} waits to write {variable_id} (site {target_site_id} down)")
+                return
+            transaction.write(variable_id, value)
+            transaction.add_site_written(target_site_id)
+            print(f"{transaction_id} stages {variable_id}={value} for site {target_site_id}")
+            return
+
+        # replicated variable: stage and note all currently up sites
+        available_sites = [
+            site.site_id for site in self.sites if site.is_up() and site.has_variable(variable_id)
+        ]
+        if not available_sites:
+            transaction.set_waiting(variable_id, ("write", variable_id, value))
+            print(f"{transaction_id} waits to write {variable_id} (no sites up)")
+            return
+
         transaction.write(variable_id, value)
-        # 记录本次写会影响到的站点（用于站点失败后的提交时检查）
-        target_sites = self._target_sites_for_write(variable_id)
-        for site_id in target_sites:
+        for site_id in available_sites:
             transaction.add_site_written(site_id)
-        print(f"{transaction_id} writes {variable_id}: {value} (to local workspace)")
+        print(f"{transaction_id} stages {variable_id}={value} for sites {sorted(available_sites)}")
 
     def end(self, transaction_id: str):
         """
@@ -212,13 +235,18 @@ class TransactionManager:
             return
 
         if transaction.status == TransactionStatus.WAITING:
-            # 等待中的事务尝试提交时，直接中止
-            self._abort_transaction(transaction, "cannot commit while waiting")
+            transaction.queue_operation(("end",))
+            print(f"{transaction_id} queued end while waiting")
             return
 
         # read-only commits immediately
         if transaction.is_read_only:
             self._commit_transaction(transaction)
+            return
+
+        # ensure odd-variable sites are available at commit time
+        if not self._write_targets_available(transaction):
+            self._abort_transaction(transaction, "write target unavailable")
             return
 
         # 写入过的站点若在提交前失败，则必须中止
@@ -231,9 +259,9 @@ class TransactionManager:
             self._abort_transaction(transaction, "WW conflict")
             return
 
-        # RW conflict (SSI)
-        if self._check_rw_conflict(transaction):
-            self._abort_transaction(transaction, "RW conflict (SSI)")
+        # RW dangerous structure (SSI)
+        if self._check_dangerous_structure(transaction):
+            self._abort_transaction(transaction, "SSI dangerous structure")
             return
 
         # 所有检查通过，提交事务
@@ -261,28 +289,31 @@ class TransactionManager:
 
         return False  # 无冲突
 
-    def _check_rw_conflict(self, transaction: Transaction) -> bool:
+    def _check_dangerous_structure(self, transaction: Transaction) -> bool:
         """
-        Purpose: detect RW conflicts for SSI (dangerous structure).
-        Author: Xi Wang
+        Purpose: detect two consecutive RW edges (SSI dangerous structure).
+        Author: Sihang Zhao
         Args: transaction
         Returns: True if conflict => abort, else False.
         Side effects: None.
         """
+        incoming_sources = set()
+
         for committed_tx in self.committed_transactions:
-            # only commits after T started
-            if committed_tx.commit_timestamp > transaction.start_timestamp:
-                # check 1: committed_tx wrote something T read
-                read_write_intersection = transaction.read_set & set(committed_tx.write_set.keys())
-                if read_write_intersection:
-                    return True  # 发现RW冲突
+            if committed_tx.commit_timestamp is None:
+                continue
+            if committed_tx.commit_timestamp <= transaction.start_timestamp:
+                continue
 
-                # check 2: committed_tx read something T wrote
-                write_read_intersection = set(transaction.write_set.keys()) & committed_tx.read_set
-                if write_read_intersection:
-                    return True  # 发现RW冲突
+            # committed_tx read something transaction writes => committed_tx ->rw transaction
+            if set(transaction.write_set.keys()) & committed_tx.read_set:
+                incoming_sources.add(committed_tx.id)
 
-        return False  # 无冲突
+        for source in incoming_sources:
+            if self.rw_edges_to.get(source):
+                return True
+
+        return False
 
     # ==================== Commit & abort ====================
 
@@ -296,28 +327,60 @@ class TransactionManager:
         """
         transaction.commit(self.current_timestamp)
 
-        # apply writes to available sites
+        affected_sites = {}
+
         for variable_id, value in transaction.write_set.items():
             variable_index = int(variable_id[1:])
+            affected_sites[variable_id] = []
 
-            if variable_index % 2 == 1:  # 非复制变量
+            if variable_index % 2 == 1:
                 target_site_id = 1 + (variable_index % 10)
                 site = self.get_site(target_site_id)
-
                 if site.is_up():
                     site.write_variable(variable_id, transaction.commit_timestamp, value)
-
-            else:  # 复制变量，写入所有可用站点
+                    affected_sites[variable_id].append(target_site_id)
+            else:
                 for site in self.sites:
                     if site.is_up() and site.has_variable(variable_id):
                         site.write_variable(variable_id, transaction.commit_timestamp, value)
+                        affected_sites[variable_id].append(site.site_id)
 
-        # record commit
+        self._record_rw_edges(transaction)
         self.committed_transactions.append(transaction)
         print(f"{transaction.id} commits")
 
-        # wake waiting tx
+        for var_id, sites in affected_sites.items():
+            if sites:
+                print(f"{transaction.id} wrote {var_id} to sites {sorted(sites)}")
+
         self._wakeup_waiting_transactions()
+
+    def _record_rw_edges(self, transaction: Transaction):
+        """
+        Purpose: record RW edges for SSI tracking after commit.
+        Author: Xi Wang
+        Args: transaction
+        Returns: None
+        Side effects: updates rw_edges_to adjacency sets.
+        """
+        incoming_sources = set()
+
+        for committed_tx in self.committed_transactions:
+            if committed_tx.commit_timestamp is None:
+                continue
+            if committed_tx.commit_timestamp <= transaction.start_timestamp:
+                continue
+
+            # committed_tx read something transaction writes => committed_tx ->rw transaction
+            if set(transaction.write_set.keys()) & committed_tx.read_set:
+                incoming_sources.add(committed_tx.id)
+
+            # transaction read something committed_tx wrote => transaction ->rw committed_tx
+            if transaction.read_set & set(committed_tx.write_set.keys()):
+                self.rw_edges_to.setdefault(committed_tx.id, set()).add(transaction.id)
+
+        if incoming_sources:
+            self.rw_edges_to.setdefault(transaction.id, set()).update(incoming_sources)
 
     def _abort_transaction(self, transaction: Transaction, reason: str = ""):
         """
@@ -329,6 +392,9 @@ class TransactionManager:
         """
         transaction.abort()
         self.aborted_transactions.append(transaction)
+        transaction.deferred_operations.clear()
+        transaction.waiting_operation = None
+        transaction.waiting_for_variable = None
 
         if reason:
             print(f"{transaction.id} aborts ({reason})")
@@ -338,18 +404,28 @@ class TransactionManager:
         # 唤醒等待中的事务
         self._wakeup_waiting_transactions()
 
-    def _target_sites_for_write(self, variable_id: str) -> List[int]:
+    def _write_targets_available(self, transaction: Transaction) -> bool:
         """
-        Purpose: identify sites that would be written (tracking for failure rule).
-        Author: Xi Wang
-        Args: variable_id
-        Returns: list of site ids
+        Purpose: ensure write targets are available (unique sites must be UP; replicated need at least one UP).
+        Author: Sihang Zhao
+        Args: transaction
+        Returns: True if writes can proceed, else False.
         Side effects: None.
         """
-        variable_index = int(variable_id[1:])
-        if variable_index % 2 == 1:
-            return [1 + (variable_index % 10)]
-        return [site.site_id for site in self.sites if site.is_up() and site.has_variable(variable_id)]
+        if not transaction.write_set:
+            return True
+
+        for variable_id in transaction.write_set:
+            variable_index = int(variable_id[1:])
+            if variable_index % 2 == 1:
+                target_site_id = 1 + (variable_index % 10)
+                if not self.get_site(target_site_id).is_up():
+                    return False
+            else:
+                if not any(site.is_up() and site.has_variable(variable_id) for site in self.sites):
+                    return False
+
+        return True
 
     def _site_up_during(self, site_id: int, start_ts: int, end_ts: int) -> bool:
         """
@@ -368,15 +444,45 @@ class TransactionManager:
 
     def _wakeup_waiting_transactions(self):
         """
-        Purpose: wake waiting transactions; retry blocked read if any.
+        Purpose: wake waiting transactions; retry deferred operations in order.
         Author: Xi Wang
         """
         for tx_id, transaction in self.transactions.items():
-            if transaction.status == TransactionStatus.WAITING:
-                transaction.set_active()
-                # 重新尝试读取之前等待的变量
-                if transaction.waiting_for_variable:
-                    self.read(tx_id, transaction.waiting_for_variable)
+            if transaction.status != TransactionStatus.WAITING:
+                continue
+
+            pending_ops = []
+            if transaction.waiting_operation:
+                pending_ops.append(transaction.waiting_operation)
+            pending_ops.extend(transaction.deferred_operations)
+            transaction.deferred_operations = []
+            transaction.waiting_operation = None
+
+            transaction.set_active()
+
+            for op in pending_ops:
+                if transaction.status == TransactionStatus.ABORTED:
+                    break
+                if transaction.status == TransactionStatus.WAITING:
+                    transaction.queue_operation(op)
+                    break
+                self._dispatch_deferred(tx_id, op)
+
+    def _dispatch_deferred(self, tx_id: str, op: tuple):
+        """
+        Purpose: rerun a deferred operation when a transaction wakes.
+        Author: Sihang Zhao
+        Args: tx_id, op tuple
+        Returns: None
+        Side effects: routes operation to read/write/end handlers.
+        """
+        kind = op[0]
+        if kind == "read":
+            self.read(tx_id, op[1])
+        elif kind == "write":
+            self.write(tx_id, op[1], op[2])
+        elif kind == "end":
+            self.end(tx_id)
 
     # ==================== 站点故障与恢复 ====================
 
@@ -464,7 +570,7 @@ class TransactionManager:
     def dump_site(self, site_id: int):
         """
         Purpose: print committed values of all variables at one site.
-        Author: Xi Wang
+        Author: Sihang Zhao
         Args: site_id
         Returns: None
         Side effects: writes dump output to stdout.
@@ -494,7 +600,7 @@ class TransactionManager:
     def cleanup_finished_transactions(self):
         """
         Purpose: remove finished (committed/aborted) transactions from active map.
-        Author: Xi Wang
+        Author: Sihang Zhao
         Args: None
         Returns: None
         Side effects: prunes self.transactions.

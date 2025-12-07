@@ -29,6 +29,8 @@ class Transaction:
         sites_written_to: Sites that will be written on commit.
         is_read_only: Whether it is read-only.
         waiting_for_variable: Variable it is blocked on.
+        waiting_operation: Deferred operation tuple to retry.
+        deferred_operations: FIFO queue for additional operations issued while waiting.
         site_failed_after_write: Flag set if a written site failed before commit.
     """
 
@@ -49,6 +51,8 @@ class Transaction:
         self.sites_written_to: Set[int] = set()
         self.is_read_only = is_read_only
         self.waiting_for_variable = None
+        self.waiting_operation = None
+        self.deferred_operations = []
         self.site_failed_after_write = False
 
     def read(self, variable: str):
@@ -81,16 +85,28 @@ class Transaction:
         """
         self.sites_written_to.add(site_id)
 
-    def set_waiting(self, variable: str = None):
+    def set_waiting(self, variable: str = None, op=None):
         """
-        Purpose: mark transaction as waiting.
+        Purpose: mark transaction as waiting and remember deferred op.
         Author: Xi Wang
-        Args: variable (optional) it waits for.
+        Args: variable (optional) it waits for; op (optional) tuple describing deferred operation.
         Returns: None
-        Side effects: status -> WAITING, sets waiting_for_variable.
+        Side effects: status -> WAITING, sets waiting_for_variable/operation.
         """
         self.status = TransactionStatus.WAITING
         self.waiting_for_variable = variable
+        if op is not None:
+            self.waiting_operation = op
+
+    def queue_operation(self, op):
+        """
+        Purpose: enqueue an operation issued while waiting.
+        Author: Sihang Zhao
+        Args: op (tuple)
+        Returns: None
+        Side effects: appends to deferred_operations.
+        """
+        self.deferred_operations.append(op)
 
     def set_active(self):
         """
@@ -102,6 +118,7 @@ class Transaction:
         """
         self.status = TransactionStatus.ACTIVE
         self.waiting_for_variable = None
+        self.waiting_operation = None
 
     def abort(self):
         """

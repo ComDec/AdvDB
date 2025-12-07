@@ -26,10 +26,11 @@ class VariableCopy:
         Side effects: initializes MVCC history and readability.
         """
         self.variable_id = variable_id
-        self.value = initial_value  # 当前值，用于dump()操作
-        self.version_history: List[Tuple[int, int]] = [(0, initial_value)]  # MVCC版本历史
+        self.value = initial_value
+        # (commit_ts, value) pairs sorted by commit_ts
+        self.version_history: List[Tuple[int, int]] = [(0, initial_value)]
         self.is_replicated = is_replicated
-        self.is_readable = True  # 默认为可读
+        self.is_readable = True
 
     def write(self, commit_timestamp: int, new_value: int):
         """
@@ -43,7 +44,6 @@ class VariableCopy:
         """
         self.value = new_value
         self.version_history.append((commit_timestamp, new_value))
-        # 写入后，该副本变为可读（恢复算法的关键）
         self.is_readable = True
 
     def read_snapshot(self, snapshot_timestamp: int) -> Tuple[int, int]:
@@ -56,17 +56,28 @@ class VariableCopy:
             (value, commit_ts): Latest value and its commit ts < snapshot_timestamp.
         Side effects: None.
         """
-        snapshot_value = self.version_history[0][1]  # 初始值
+        snapshot_value = self.version_history[0][1]
         snapshot_commit_ts = self.version_history[0][0]
 
         for commit_ts, value in self.version_history:
-            if commit_ts < snapshot_timestamp:
+            if commit_ts <= snapshot_timestamp:
                 snapshot_value = value
                 snapshot_commit_ts = commit_ts
             else:
-                break  # 已经找到晚于快照时间的版本，停止搜索
+                break
 
         return snapshot_value, snapshot_commit_ts
+
+    def reset_snapshot_history(self):
+        """
+        Purpose: drop MVCC history after a site failure.
+        Author: Xi Wang
+        Args: None
+        Returns: None
+        Side effects: retains current value but clears history and marks unreadable (until recovery rules apply).
+        """
+        self.version_history = [(0, self.value)]
+        self.is_readable = False
 
     def set_stale(self):
         """Purpose: mark replica unreadable after recovery. Author: Xi Wang. Args: None. Returns: None. Side effects: is_readable=False."""

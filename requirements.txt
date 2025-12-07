@@ -1,9 +1,1 @@
-# RepCRec - 分布式复制并发控制与恢复系统
-#
-# 本项目使用Python标准库实现，无需额外依赖
-# Python 3.7+ 即可运行
-
-# 如需运行测试或格式化代码，可选安装以下包：
-# pytest>=7.0.0
-# black>=22.0.0
-# flake8>=4.0.0
+# No external runtime dependencies; Python 3.9+ standard library only.
