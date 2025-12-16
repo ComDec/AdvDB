@@ -1,4 +1,6 @@
-# Revised Code
+# Revision Report
+
+Xi Wang, Sihang Zhao
 
 ## Overview
 Our changes focus on:
@@ -6,6 +8,7 @@ Our changes focus on:
 2. Non-replicated variable protection: Abort if sole site is down at commit
 3. Read-only transaction exclusion: Skip read-only transactions in SSI RW checks
 
+Now our code can pass all the tests (49/49).
 ---
 
 ## File-Level Change Summary
@@ -63,7 +66,7 @@ def reset_snapshot_history(self):
 **Before**:
 ```python
 def fail(self):
-    """站点失败"""
+    """Mark site as failed."""
     self.status = SiteStatus.DOWN
 ```
 
@@ -182,7 +185,4 @@ All 49 test cases pass, including:
 ---
 
 ## Related Documents
-
-- `refine_nagi.md`: Change summary
-- `Nagi_revise.md`: Detailed change description (Chinese)
 - `test_results.log`: Test execution log
