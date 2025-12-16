@@ -1,0 +1,49 @@
+======================================================================
+TEST: test42
+Description: Transaction waits for non-replicated var site
+Result: FAILED
+======================================================================
+
+----------------------------------------
+COMMITS/ABORTS:
+----------------------------------------
+  Expected Commits: ['T1']
+  Actual Commits:   []
+  Expected Aborts:  []
+  Actual Aborts:    []
+
+----------------------------------------
+READ VALUES:
+----------------------------------------
+  Expected Reads: {'x3': 30}
+  Actual Reads:   {'x3': 30}
+
+----------------------------------------
+ERRORS:
+----------------------------------------
+  - Commits: expected ['T1'], got []
+
+----------------------------------------
+INPUT COMMANDS:
+----------------------------------------
+// Test 42: Transaction waits for non-replicated variable
+// x3 is only at site 4. Site 4 is down when T1 tries to read.
+// T1 should wait, then read after recovery.
+begin(T1)
+fail(4)
+R(T1,x3)
+recover(4)
+end(T1)
+
+
+----------------------------------------
+FULL OUTPUT:
+----------------------------------------
+=== Executing 5 commands from /data1/xw3763/project/playgroud/AdvDB/tests/test42.txt ===
+
+T1 begins
+Site 4 fails
+T1 waits for x3 (site 4 down)
+Site 4 recovers
+x3: 30
+

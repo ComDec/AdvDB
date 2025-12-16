@@ -1,0 +1,72 @@
+======================================================================
+TEST: test25
+Description: T3 waits for site 2, then reads x8=88 and commits
+Result: FAILED
+======================================================================
+
+----------------------------------------
+COMMITS/ABORTS:
+----------------------------------------
+  Expected Commits: ['T1', 'T2', 'T3', 'T4']
+  Actual Commits:   []
+  Expected Aborts:  []
+  Actual Aborts:    []
+
+----------------------------------------
+READ VALUES:
+----------------------------------------
+  Expected Reads: {'x1': 10, 'x3': 30, 'x8': 88}
+  Actual Reads:   {'x1': 10}
+
+----------------------------------------
+ERRORS:
+----------------------------------------
+  - Commits: expected ['T1', 'T2', 'T3', 'T4'], got []
+  - Read x3: expected 30, but no read found
+  - Read x8: expected 88, but no read found
+
+----------------------------------------
+INPUT COMMANDS:
+----------------------------------------
+// Test 25
+// T3 must wait for site 2
+begin(T1)
+begin(T2)
+fail(3)
+fail(4)
+R(T1,x1)
+W(T2,x8,88)
+end(T1)
+recover(4)
+recover(3)
+R(T2,x3)
+end(T2)
+fail(1)
+fail(5)
+fail(6)
+fail(7)
+fail(8)
+fail(9)
+fail(10)
+begin(T3)
+fail(2)
+begin(T4)
+W(T4,x8,99)
+end(T4)
+R(T3,x8)
+recover(2)
+end(T3)
+
+
+----------------------------------------
+FULL OUTPUT:
+----------------------------------------
+=== Executing 26 commands from /data1/xw3763/project/playgroud/AdvDB/tests/test25.txt ===
+
+T1 begins
+T2 begins
+Site 3 fails
+Site 4 fails
+x1: 10
+T2 stages x8=88 for sites [1, 2, 5, 6, 7, 8, 9, 10]
+

@@ -1,0 +1,75 @@
+======================================================================
+TEST: test18
+Description: RW Cycle - T5 aborts
+Result: FAILED
+======================================================================
+
+----------------------------------------
+COMMITS/ABORTS:
+----------------------------------------
+  Expected Commits: ['T1', 'T2', 'T3', 'T4']
+  Actual Commits:   []
+  Expected Aborts:  ['T5']
+  Actual Aborts:    []
+
+----------------------------------------
+READ VALUES:
+----------------------------------------
+  Expected Reads: {'x4': 40, 'x5': 50, 'x1': 10, 'x2': 20, 'x3': 30}
+  Actual Reads:   {'x4': 40, 'x5': 50, 'x1': 10, 'x2': 20, 'x3': 30}
+
+----------------------------------------
+ERRORS:
+----------------------------------------
+  - Commits: expected ['T1', 'T2', 'T3', 'T4'], got []
+  - Aborts: expected ['T5'], got []
+
+----------------------------------------
+INPUT COMMANDS:
+----------------------------------------
+// Test 18
+// A circular conflict scenario where every edge is a RW edge.
+// T5 aborts since it closes the cycle
+begin(T1)
+begin(T2)
+begin(T3)
+begin(T4)
+begin(T5)
+R(T4,x4)
+R(T5,x5)
+R(T1,x1)
+W(T1,x2,10)
+R(T2,x2)
+W(T2,x3,20)
+R(T3,x3)
+W(T3,x4,30)
+W(T4,x5,40)
+W(T5,x1,50)
+end(T4)
+end(T3)
+end(T2)
+end(T1)
+end(T5)
+
+
+----------------------------------------
+FULL OUTPUT:
+----------------------------------------
+=== Executing 20 commands from /data1/xw3763/project/playgroud/AdvDB/tests/test18.txt ===
+
+T1 begins
+T2 begins
+T3 begins
+T4 begins
+T5 begins
+x4: 40
+x5: 50
+x1: 10
+T1 stages x2=10 for sites [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+x2: 20
+T2 stages x3=20 for site 4
+x3: 30
+T3 stages x4=30 for sites [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+T4 stages x5=40 for site 6
+T5 stages x1=50 for site 2
+

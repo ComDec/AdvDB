@@ -1,0 +1,59 @@
+======================================================================
+TEST: test20
+Description: T1 commits, T2 aborts (FCW)
+Result: FAILED
+======================================================================
+
+----------------------------------------
+COMMITS/ABORTS:
+----------------------------------------
+  Expected Commits: ['T1']
+  Actual Commits:   []
+  Expected Aborts:  ['T2']
+  Actual Aborts:    []
+
+----------------------------------------
+READ VALUES:
+----------------------------------------
+  Expected Reads: {'x2': 20}
+  Actual Reads:   {'x2': 20}
+
+----------------------------------------
+DUMP (Final State):
+----------------------------------------
+  Expected Dump: {'x2': 202}
+  Actual Dump:   {}
+
+----------------------------------------
+ERRORS:
+----------------------------------------
+  - Commits: expected ['T1'], got []
+  - Aborts: expected ['T2'], got []
+  - Dump x2: expected 202, but not in dump
+
+----------------------------------------
+INPUT COMMANDS:
+----------------------------------------
+// Test 20
+// T2 aborts, T1 succeeds
+begin(T1)
+begin(T2)
+R(T2, x2)
+W(T1, x2, 202)
+W(T2, x2, 302)
+end(T1)
+end(T2)
+dump()
+
+
+----------------------------------------
+FULL OUTPUT:
+----------------------------------------
+=== Executing 8 commands from /data1/xw3763/project/playgroud/AdvDB/tests/test20.txt ===
+
+T1 begins
+T2 begins
+x2: 20
+T1 stages x2=202 for sites [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+T2 stages x2=302 for sites [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+

@@ -1,0 +1,51 @@
+======================================================================
+TEST: test33
+Description: Non-replicated var available immediately after recovery
+Result: FAILED
+======================================================================
+
+----------------------------------------
+COMMITS/ABORTS:
+----------------------------------------
+  Expected Commits: ['T1', 'T2']
+  Actual Commits:   []
+  Expected Aborts:  []
+  Actual Aborts:    []
+
+----------------------------------------
+READ VALUES:
+----------------------------------------
+  Expected Reads: {'x3': 30}
+  Actual Reads:   {'x3': 30}
+
+----------------------------------------
+ERRORS:
+----------------------------------------
+  - Commits: expected ['T1', 'T2'], got []
+
+----------------------------------------
+INPUT COMMANDS:
+----------------------------------------
+// Test 33: Non-replicated variable available immediately after recovery
+// x3 is only at site 4. Site 4 fails and recovers.
+// T2 begins after recovery and can read x3 immediately.
+begin(T1)
+fail(4)
+recover(4)
+begin(T2)
+R(T2,x3)
+end(T1)
+end(T2)
+
+
+----------------------------------------
+FULL OUTPUT:
+----------------------------------------
+=== Executing 7 commands from /data1/xw3763/project/playgroud/AdvDB/tests/test33.txt ===
+
+T1 begins
+Site 4 fails
+Site 4 recovers
+T2 begins
+x3: 30
+

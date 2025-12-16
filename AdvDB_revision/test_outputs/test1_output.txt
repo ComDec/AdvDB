@@ -1,0 +1,57 @@
+======================================================================
+TEST: test1
+Description: First Committer Wins - T2 commits, T1 aborts
+Result: FAILED
+======================================================================
+
+----------------------------------------
+COMMITS/ABORTS:
+----------------------------------------
+  Expected Commits: ['T2']
+  Actual Commits:   []
+  Expected Aborts:  ['T1']
+  Actual Aborts:    []
+
+----------------------------------------
+DUMP (Final State):
+----------------------------------------
+  Expected Dump: {'x1': 201, 'x2': 202}
+  Actual Dump:   {}
+
+----------------------------------------
+ERRORS:
+----------------------------------------
+  - Commits: expected ['T2'], got []
+  - Aborts: expected ['T1'], got []
+  - Dump x1: expected 201, but not in dump
+  - Dump x2: expected 202, but not in dump
+
+----------------------------------------
+INPUT COMMANDS:
+----------------------------------------
+// Test 1: First Committer Wins
+// T1 should abort, T2 should not, because T2 committed first
+// and they both wrote x1 and x2.
+begin(T1)
+begin(T2)
+W(T1,x1,101)
+W(T2,x2,202)
+W(T1,x2,102)
+W(T2,x1,201)
+end(T2)
+end(T1)
+dump()
+
+
+----------------------------------------
+FULL OUTPUT:
+----------------------------------------
+=== Executing 9 commands from /data1/xw3763/project/playgroud/AdvDB/tests/test1.txt ===
+
+T1 begins
+T2 begins
+T1 stages x1=101 for site 2
+T2 stages x2=202 for sites [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+T1 stages x2=102 for sites [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+T2 stages x1=201 for site 2
+

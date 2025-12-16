@@ -1,0 +1,56 @@
+======================================================================
+TEST: test14
+Description: Only T1 commits (first committer wins)
+Result: FAILED
+======================================================================
+
+----------------------------------------
+COMMITS/ABORTS:
+----------------------------------------
+  Expected Commits: ['T1']
+  Actual Commits:   []
+  Expected Aborts:  ['T2', 'T3']
+  Actual Aborts:    []
+
+----------------------------------------
+DUMP (Final State):
+----------------------------------------
+  Expected Dump: {'x2': 20}
+  Actual Dump:   {}
+
+----------------------------------------
+ERRORS:
+----------------------------------------
+  - Commits: expected ['T1'], got []
+  - Aborts: expected ['T2', 'T3'], got []
+  - Dump x2: expected 20, but not in dump
+
+----------------------------------------
+INPUT COMMANDS:
+----------------------------------------
+// Test 14
+// Only T1 commits and so final value of x2 is 20
+begin(T1)
+begin(T2)
+begin(T3)
+W(T3,x2,10)
+W(T1,x2,20)
+W(T2,x2,30)
+end(T1)
+end(T3)
+end(T2)
+dump()
+
+
+----------------------------------------
+FULL OUTPUT:
+----------------------------------------
+=== Executing 10 commands from /data1/xw3763/project/playgroud/AdvDB/tests/test14.txt ===
+
+T1 begins
+T2 begins
+T3 begins
+T3 stages x2=10 for sites [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+T1 stages x2=20 for sites [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+T2 stages x2=30 for sites [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+

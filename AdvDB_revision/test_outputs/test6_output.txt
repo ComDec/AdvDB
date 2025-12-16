@@ -1,0 +1,57 @@
+======================================================================
+TEST: test6
+Description: T1 ok, T2 ok - reads from recovered site
+Result: FAILED
+======================================================================
+
+----------------------------------------
+COMMITS/ABORTS:
+----------------------------------------
+  Expected Commits: ['T1', 'T2']
+  Actual Commits:   []
+  Expected Aborts:  []
+  Actual Aborts:    []
+
+----------------------------------------
+READ VALUES:
+----------------------------------------
+  Expected Reads: {'x1': 10, 'x3': 30}
+  Actual Reads:   {'x1': 10}
+
+----------------------------------------
+ERRORS:
+----------------------------------------
+  - Commits: expected ['T1', 'T2'], got []
+  - Read x3: expected 30, but no read found
+
+----------------------------------------
+INPUT COMMANDS:
+----------------------------------------
+// Test 6
+// T1 ok. T2 ok.
+begin(T1)
+begin(T2)
+fail(3)
+fail(4)
+R(T1,x1)
+W(T2,x8,88)
+end(T1)
+recover(4)
+recover(3)
+R(T2,x3)
+end(T2)
+dump()
+
+
+----------------------------------------
+FULL OUTPUT:
+----------------------------------------
+=== Executing 12 commands from /data1/xw3763/project/playgroud/AdvDB/tests/test6.txt ===
+
+T1 begins
+T2 begins
+Site 3 fails
+Site 4 fails
+x1: 10
+T2 stages x8=88 for sites [1, 2, 5, 6, 7, 8, 9, 10]
+

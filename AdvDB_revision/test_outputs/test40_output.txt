@@ -1,0 +1,61 @@
+======================================================================
+TEST: test40
+Description: Four transactions write same var - first committer wins
+Result: FAILED
+======================================================================
+
+----------------------------------------
+COMMITS/ABORTS:
+----------------------------------------
+  Expected Commits: ['T3']
+  Actual Commits:   []
+  Expected Aborts:  ['T1', 'T2', 'T4']
+  Actual Aborts:    []
+
+----------------------------------------
+DUMP (Final State):
+----------------------------------------
+  Expected Dump: {'x4': 300}
+  Actual Dump:   {}
+
+----------------------------------------
+ERRORS:
+----------------------------------------
+  - Commits: expected ['T3'], got []
+  - Aborts: expected ['T1', 'T2', 'T4'], got []
+  - Dump x4: expected 300, but not in dump
+
+----------------------------------------
+INPUT COMMANDS:
+----------------------------------------
+// Test 40: Four transactions write same variable
+// T1, T2, T3, T4 all write x4. T3 commits first. Others abort.
+begin(T1)
+begin(T2)
+begin(T3)
+begin(T4)
+W(T1,x4,100)
+W(T2,x4,200)
+W(T3,x4,300)
+W(T4,x4,400)
+end(T3)
+end(T1)
+end(T2)
+end(T4)
+dump()
+
+
+----------------------------------------
+FULL OUTPUT:
+----------------------------------------
+=== Executing 13 commands from /data1/xw3763/project/playgroud/AdvDB/tests/test40.txt ===
+
+T1 begins
+T2 begins
+T3 begins
+T4 begins
+T1 stages x4=100 for sites [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+T2 stages x4=200 for sites [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+T3 stages x4=300 for sites [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+T4 stages x4=400 for sites [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+

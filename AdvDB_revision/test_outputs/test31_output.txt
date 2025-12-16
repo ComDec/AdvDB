@@ -1,0 +1,56 @@
+======================================================================
+TEST: test31
+Description: Snapshot isolation - T2 doesn't see T1's uncommitted write
+Result: FAILED
+======================================================================
+
+----------------------------------------
+COMMITS/ABORTS:
+----------------------------------------
+  Expected Commits: ['T1', 'T2']
+  Actual Commits:   []
+  Expected Aborts:  []
+  Actual Aborts:    []
+
+----------------------------------------
+READ VALUES:
+----------------------------------------
+  Expected Reads: {'x2': 20}
+  Actual Reads:   {'x2': 20}
+
+----------------------------------------
+DUMP (Final State):
+----------------------------------------
+  Expected Dump: {'x2': 999}
+  Actual Dump:   {}
+
+----------------------------------------
+ERRORS:
+----------------------------------------
+  - Commits: expected ['T1', 'T2'], got []
+  - Dump x2: expected 999, but not in dump
+
+----------------------------------------
+INPUT COMMANDS:
+----------------------------------------
+// Test 31: Snapshot isolation - T2 doesn't see T1's uncommitted write
+// T1 writes x2, T2 reads x2 before T1 commits, T2 sees initial value
+begin(T1)
+begin(T2)
+W(T1,x2,999)
+R(T2,x2)
+end(T1)
+end(T2)
+dump()
+
+
+----------------------------------------
+FULL OUTPUT:
+----------------------------------------
+=== Executing 7 commands from /data1/xw3763/project/playgroud/AdvDB/tests/test31.txt ===
+
+T1 begins
+T2 begins
+T1 stages x2=999 for sites [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+x2: 20
+

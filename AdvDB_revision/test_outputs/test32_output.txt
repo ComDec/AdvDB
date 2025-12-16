@@ -1,0 +1,60 @@
+======================================================================
+TEST: test32
+Description: Sites fail/recover, T2 reads from still-up sites
+Result: FAILED
+======================================================================
+
+----------------------------------------
+COMMITS/ABORTS:
+----------------------------------------
+  Expected Commits: ['T1', 'T2']
+  Actual Commits:   []
+  Expected Aborts:  []
+  Actual Aborts:    []
+
+----------------------------------------
+READ VALUES:
+----------------------------------------
+  Expected Reads: {'x2': 20}
+  Actual Reads:   {'x2': 20}
+
+----------------------------------------
+ERRORS:
+----------------------------------------
+  - Commits: expected ['T1', 'T2'], got []
+
+----------------------------------------
+INPUT COMMANDS:
+----------------------------------------
+// Test 32: Multiple sites fail then recover, replicated var not readable until write
+// Sites 1,2,3 fail and recover. T2 begins after recovery.
+// T2 cannot read x2 from sites 1,2,3 until a write commits there.
+// But sites 4-10 are still up, so T2 can read from them.
+begin(T1)
+fail(1)
+fail(2)
+fail(3)
+recover(1)
+recover(2)
+recover(3)
+begin(T2)
+R(T2,x2)
+end(T1)
+end(T2)
+
+
+----------------------------------------
+FULL OUTPUT:
+----------------------------------------
+=== Executing 11 commands from /data1/xw3763/project/playgroud/AdvDB/tests/test32.txt ===
+
+T1 begins
+Site 1 fails
+Site 2 fails
+Site 3 fails
+Site 1 recovers
+Site 2 recovers
+Site 3 recovers
+T2 begins
+x2: 20
+

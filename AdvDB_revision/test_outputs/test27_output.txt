@@ -1,0 +1,41 @@
+======================================================================
+TEST: test27
+Description: Write to non-replicated var, its site fails -> abort
+Result: PASSED
+======================================================================
+
+----------------------------------------
+COMMITS/ABORTS:
+----------------------------------------
+  Expected Commits: []
+  Actual Commits:   []
+  Expected Aborts:  ['T1']
+  Actual Aborts:    ['T1']
+
+----------------------------------------
+INPUT COMMANDS:
+----------------------------------------
+// Test 27: Write to non-replicated variable, site fails
+// T1 writes x1 (only at site 2), then site 2 fails -> T1 aborts
+begin(T1)
+W(T1,x1,100)
+fail(2)
+end(T1)
+
+
+----------------------------------------
+FULL OUTPUT:
+----------------------------------------
+=== Executing 4 commands from /data1/xw3763/project/playgroud/AdvDB/tests/test27.txt ===
+
+T1 begins
+T1 stages x1=100 for site 2
+Site 2 fails
+T1 aborts (write target unavailable)
+
+=== Execution completed ===
+
+Final statistics:
+  Committed transactions: 0
+  Aborted transactions: 1
+

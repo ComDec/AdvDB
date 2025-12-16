@@ -1,0 +1,47 @@
+======================================================================
+TEST: test28
+Description: Write to non-replicated var, different site fails -> commit
+Result: FAILED
+======================================================================
+
+----------------------------------------
+COMMITS/ABORTS:
+----------------------------------------
+  Expected Commits: ['T1']
+  Actual Commits:   []
+  Expected Aborts:  []
+  Actual Aborts:    []
+
+----------------------------------------
+DUMP (Final State):
+----------------------------------------
+  Expected Dump: {'x1': 100}
+  Actual Dump:   {}
+
+----------------------------------------
+ERRORS:
+----------------------------------------
+  - Commits: expected ['T1'], got []
+  - Dump x1: expected 100, but not in dump
+
+----------------------------------------
+INPUT COMMANDS:
+----------------------------------------
+// Test 28: Write to non-replicated variable, different site fails
+// T1 writes x1 (only at site 2), site 3 fails -> T1 commits (site 2 still up)
+begin(T1)
+W(T1,x1,100)
+fail(3)
+end(T1)
+dump()
+
+
+----------------------------------------
+FULL OUTPUT:
+----------------------------------------
+=== Executing 5 commands from /data1/xw3763/project/playgroud/AdvDB/tests/test28.txt ===
+
+T1 begins
+T1 stages x1=100 for site 2
+Site 3 fails
+

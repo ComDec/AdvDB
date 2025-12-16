@@ -1,0 +1,58 @@
+======================================================================
+TEST: test_issue2
+Description: Sequential transactions - no RW cycle (Issue 2 fix)
+Result: FAILED
+======================================================================
+
+----------------------------------------
+COMMITS/ABORTS:
+----------------------------------------
+  Expected Commits: ['T1', 'T2']
+  Actual Commits:   []
+  Expected Aborts:  []
+  Actual Aborts:    []
+
+----------------------------------------
+READ VALUES:
+----------------------------------------
+  Expected Reads: {'x1': 100}
+  Actual Reads:   {}
+
+----------------------------------------
+DUMP (Final State):
+----------------------------------------
+  Expected Dump: {'x1': 200}
+  Actual Dump:   {}
+
+----------------------------------------
+ERRORS:
+----------------------------------------
+  - Commits: expected ['T1', 'T2'], got []
+  - Read x1: expected 100, but no read found
+  - Dump x1: expected 200, but not in dump
+
+----------------------------------------
+INPUT COMMANDS:
+----------------------------------------
+// Test Issue 2: Sequential transactions should not create RW cycle
+// T1 writes x1 and commits
+// T2 begins AFTER T1 commits, reads x1, writes x1
+// T2 should commit (no cycle - T1 already committed before T2 began)
+begin(T1)
+W(T1,x1,100)
+end(T1)
+begin(T2)
+R(T2,x1)
+W(T2,x1,200)
+end(T2)
+dump()
+
+
+----------------------------------------
+FULL OUTPUT:
+----------------------------------------
+=== Executing 8 commands from /data1/xw3763/project/playgroud/AdvDB/tests/test_issue2.txt ===
+
+T1 begins
+T1 stages x1=100 for site 2
+

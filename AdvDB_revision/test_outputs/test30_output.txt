@@ -1,0 +1,53 @@
+======================================================================
+TEST: test30
+Description: Read your own write
+Result: FAILED
+======================================================================
+
+----------------------------------------
+COMMITS/ABORTS:
+----------------------------------------
+  Expected Commits: ['T1']
+  Actual Commits:   []
+  Expected Aborts:  []
+  Actual Aborts:    []
+
+----------------------------------------
+READ VALUES:
+----------------------------------------
+  Expected Reads: {'x2': 999}
+  Actual Reads:   {'x2': 999}
+
+----------------------------------------
+DUMP (Final State):
+----------------------------------------
+  Expected Dump: {'x2': 999}
+  Actual Dump:   {}
+
+----------------------------------------
+ERRORS:
+----------------------------------------
+  - Commits: expected ['T1'], got []
+  - Dump x2: expected 999, but not in dump
+
+----------------------------------------
+INPUT COMMANDS:
+----------------------------------------
+// Test 30: Read your own write
+// T1 writes then reads same variable, should see its own write
+begin(T1)
+W(T1,x2,999)
+R(T1,x2)
+end(T1)
+dump()
+
+
+----------------------------------------
+FULL OUTPUT:
+----------------------------------------
+=== Executing 5 commands from /data1/xw3763/project/playgroud/AdvDB/tests/test30.txt ===
+
+T1 begins
+T1 stages x2=999 for sites [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+x2: 999
+

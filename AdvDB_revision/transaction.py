@@ -49,6 +49,8 @@ class Transaction:
         self.read_set: Set[str] = set()
         self.write_set: Dict[str, int] = {}
         self.sites_written_to: Set[int] = set()
+        # write_targets tracks which sites a given variable should be written to
+        self.write_targets: Dict[str, Set[int]] = {}
         self.is_read_only = is_read_only
         self.waiting_for_variable = None
         self.waiting_operation = None
@@ -75,6 +77,18 @@ class Transaction:
         """
         self.write_set[variable] = value
 
+    def record_write_targets(self, variable: str, sites: Set[int]):
+        """
+        Purpose: remember which sites should receive a variable on commit.
+        Author: Xi Wang
+        Args: variable, sites
+        Returns: None
+        Side effects: updates per-variable targets and aggregate sites_written_to.
+        """
+        targets = self.write_targets.setdefault(variable, set())
+        targets.update(sites)
+        self.sites_written_to.update(sites)
+    
     def add_site_written(self, site_id: int):
         """
         Purpose: record a site that will be written.

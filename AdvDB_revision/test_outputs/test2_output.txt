@@ -1,0 +1,62 @@
+======================================================================
+TEST: test2
+Description: Snapshot Isolation - Both commit
+Result: FAILED
+======================================================================
+
+----------------------------------------
+COMMITS/ABORTS:
+----------------------------------------
+  Expected Commits: ['T1', 'T2']
+  Actual Commits:   []
+  Expected Aborts:  []
+  Actual Aborts:    []
+
+----------------------------------------
+READ VALUES:
+----------------------------------------
+  Expected Reads: {'x2': 20, 'x1': 10}
+  Actual Reads:   {'x2': 20, 'x1': 10}
+
+----------------------------------------
+DUMP (Final State):
+----------------------------------------
+  Expected Dump: {'x1': 101, 'x2': 102}
+  Actual Dump:   {}
+
+----------------------------------------
+ERRORS:
+----------------------------------------
+  - Commits: expected ['T1', 'T2'], got []
+  - Dump x1: expected 101, but not in dump
+  - Dump x2: expected 102, but not in dump
+
+----------------------------------------
+INPUT COMMANDS:
+----------------------------------------
+// Test 2: Snapshot Isolation Read
+// No aborts happens, since all transactions use SSI
+// Reads return initial values
+begin(T1)
+begin(T2)
+W(T1,x1,101)
+R(T2,x2)
+W(T1,x2,102)
+R(T2,x1)
+end(T1)
+end(T2)
+dump()
+
+
+----------------------------------------
+FULL OUTPUT:
+----------------------------------------
+=== Executing 9 commands from /data1/xw3763/project/playgroud/AdvDB/tests/test2.txt ===
+
+T1 begins
+T2 begins
+T1 stages x1=101 for site 2
+x2: 20
+T1 stages x2=102 for sites [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+x1: 10
+

@@ -1,0 +1,62 @@
+======================================================================
+TEST: test21
+Description: Simple RW cycle - T1 ok, T2 aborts
+Result: FAILED
+======================================================================
+
+----------------------------------------
+COMMITS/ABORTS:
+----------------------------------------
+  Expected Commits: ['T1']
+  Actual Commits:   []
+  Expected Aborts:  ['T2']
+  Actual Aborts:    []
+
+----------------------------------------
+READ VALUES:
+----------------------------------------
+  Expected Reads: {'x2': 20, 'x4': 40}
+  Actual Reads:   {'x2': 20, 'x4': 40}
+
+----------------------------------------
+DUMP (Final State):
+----------------------------------------
+  Expected Dump: {'x4': 30}
+  Actual Dump:   {}
+
+----------------------------------------
+ERRORS:
+----------------------------------------
+  - Commits: expected ['T1'], got []
+  - Aborts: expected ['T2'], got []
+  - Dump x4: expected 30, but not in dump
+
+----------------------------------------
+INPUT COMMANDS:
+----------------------------------------
+// Test 21
+// simple r-w cycle
+// T1 ok, T2 aborts
+begin(T1)
+begin(T2)
+R(T1, x2)
+R(T2, x4)
+W(T1, x4, 30)
+W(T2, x2, 90)
+end(T1)
+end(T2)
+dump()
+
+
+----------------------------------------
+FULL OUTPUT:
+----------------------------------------
+=== Executing 9 commands from /data1/xw3763/project/playgroud/AdvDB/tests/test21.txt ===
+
+T1 begins
+T2 begins
+x2: 20
+x4: 40
+T1 stages x4=30 for sites [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+T2 stages x2=90 for sites [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+

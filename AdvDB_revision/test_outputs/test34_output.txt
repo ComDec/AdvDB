@@ -1,0 +1,60 @@
+======================================================================
+TEST: test34
+Description: Write makes replicated var readable after recovery
+Result: FAILED
+======================================================================
+
+----------------------------------------
+COMMITS/ABORTS:
+----------------------------------------
+  Expected Commits: ['T1', 'T2']
+  Actual Commits:   []
+  Expected Aborts:  []
+  Actual Aborts:    []
+
+----------------------------------------
+READ VALUES:
+----------------------------------------
+  Expected Reads: {'x2': 222}
+  Actual Reads:   {}
+
+----------------------------------------
+DUMP (Final State):
+----------------------------------------
+  Expected Dump: {'x2': 222}
+  Actual Dump:   {}
+
+----------------------------------------
+ERRORS:
+----------------------------------------
+  - Commits: expected ['T1', 'T2'], got []
+  - Read x2: expected 222, but no read found
+  - Dump x2: expected 222, but not in dump
+
+----------------------------------------
+INPUT COMMANDS:
+----------------------------------------
+// Test 34: Write makes replicated variable readable after recovery
+// Site 1 fails and recovers. T1 writes x2 to site 1.
+// T2 begins after T1 commits and can read x2 from site 1.
+fail(1)
+recover(1)
+begin(T1)
+W(T1,x2,222)
+end(T1)
+begin(T2)
+R(T2,x2)
+end(T2)
+dump()
+
+
+----------------------------------------
+FULL OUTPUT:
+----------------------------------------
+=== Executing 9 commands from /data1/xw3763/project/playgroud/AdvDB/tests/test34.txt ===
+
+Site 1 fails
+Site 1 recovers
+T1 begins
+T1 stages x2=222 for sites [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+

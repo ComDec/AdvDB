@@ -1,0 +1,51 @@
+======================================================================
+TEST: test37
+Description: Disjoint writes - no conflict, both commit
+Result: FAILED
+======================================================================
+
+----------------------------------------
+COMMITS/ABORTS:
+----------------------------------------
+  Expected Commits: ['T1', 'T2']
+  Actual Commits:   []
+  Expected Aborts:  []
+  Actual Aborts:    []
+
+----------------------------------------
+DUMP (Final State):
+----------------------------------------
+  Expected Dump: {'x1': 100, 'x3': 300}
+  Actual Dump:   {}
+
+----------------------------------------
+ERRORS:
+----------------------------------------
+  - Commits: expected ['T1', 'T2'], got []
+  - Dump x1: expected 100, but not in dump
+  - Dump x3: expected 300, but not in dump
+
+----------------------------------------
+INPUT COMMANDS:
+----------------------------------------
+// Test 37: Disjoint writes - no conflict
+// T1 writes x1, T2 writes x3. No conflict, both commit.
+begin(T1)
+begin(T2)
+W(T1,x1,100)
+W(T2,x3,300)
+end(T1)
+end(T2)
+dump()
+
+
+----------------------------------------
+FULL OUTPUT:
+----------------------------------------
+=== Executing 7 commands from /data1/xw3763/project/playgroud/AdvDB/tests/test37.txt ===
+
+T1 begins
+T2 begins
+T1 stages x1=100 for site 2
+T2 stages x3=300 for site 4
+

@@ -36,7 +36,10 @@ class TransactionManager:
         self.aborted_transactions: List[Transaction] = []
         # (site_id, event, timestamp), event in {"up","down"}
         self.failure_history: List[Tuple[int, str, int]] = []
-        self.rw_edges_to: Dict[str, Set[str]] = {}
+        # rw_out_edges[from] = set of transactions this transaction has RW edges to (reader -> writer)
+        self.rw_out_edges: Dict[str, Set[str]] = {}
+        # rw_in_edges[to] = set of transactions that have RW edges into this transaction
+        self.rw_in_edges: Dict[str, Set[str]] = {}
         self.current_timestamp = 0
 
         # initialize 10 sites with variables
@@ -149,7 +152,9 @@ class TransactionManager:
                 disqualified_sites += 1
                 continue
 
-            if site.is_up() and variable_copy.is_readable:
+            last_fail = self._last_failure_time(site.site_id)
+            started_before_failure = last_fail is not None and transaction.start_timestamp <= last_fail
+            if site.is_up() and (variable_copy.is_readable or started_before_failure):
                 candidates.append((commit_ts, site.site_id, value))
 
         if candidates:
@@ -199,7 +204,7 @@ class TransactionManager:
                 print(f"{transaction_id} waits to write {variable_id} (site {target_site_id} down)")
                 return
             transaction.write(variable_id, value)
-            transaction.add_site_written(target_site_id)
+            transaction.record_write_targets(variable_id, {target_site_id})
             print(f"{transaction_id} stages {variable_id}={value} for site {target_site_id}")
             return
 
@@ -213,8 +218,7 @@ class TransactionManager:
             return
 
         transaction.write(variable_id, value)
-        for site_id in available_sites:
-            transaction.add_site_written(site_id)
+        transaction.record_write_targets(variable_id, set(available_sites))
         print(f"{transaction_id} stages {variable_id}={value} for sites {sorted(available_sites)}")
 
     def end(self, transaction_id: str):
@@ -295,30 +299,14 @@ class TransactionManager:
         return False
 
     def _check_dangerous_structure(self, transaction: Transaction) -> bool:
-        """
-        Purpose: detect two consecutive RW edges (SSI dangerous structure).
-        Author: Sihang Zhao
-        Args: transaction
-        Returns: True if conflict => abort, else False.
-        Side effects: None.
-        """
-        incoming_sources = set()
+        incoming_committed = self._get_incoming_committed(transaction)
+        outgoing_committed = {
+            tx_id
+            for tx_id in self.rw_out_edges.get(transaction.id, set())
+            if self._is_committed(tx_id)
+        }
 
-        for committed_tx in self.committed_transactions:
-            if committed_tx.commit_timestamp is None:
-                continue
-            if committed_tx.commit_timestamp <= transaction.start_timestamp:
-                continue
-
-            # committed_tx read something transaction writes => committed_tx ->rw transaction
-            if set(transaction.write_set.keys()) & committed_tx.read_set:
-                incoming_sources.add(committed_tx.id)
-
-        for source in incoming_sources:
-            if self.rw_edges_to.get(source):
-                return True
-
-        return False
+        return bool(incoming_committed and outgoing_committed)
 
     # ==================== Commit & abort ====================
 
@@ -338,18 +326,17 @@ class TransactionManager:
             variable_index = int(variable_id[1:])
             affected_sites[variable_id] = []
 
-            if variable_index % 2 == 1:
-                target_site_id = 1 + (variable_index % 10)
-                site = self.get_site(target_site_id)
-                if site.is_up():
-                    site.write_variable(variable_id, transaction.commit_timestamp, value)
-                    affected_sites[variable_id].append(target_site_id)
-            else:
-                for site in self.sites:
-                    if site.is_up() and site.has_variable(variable_id):
-                        site.write_variable(variable_id, transaction.commit_timestamp, value)
-                        affected_sites[variable_id].append(site.site_id)
+            target_sites = transaction.write_targets.get(variable_id, set())
 
+            if variable_index % 2 == 1:
+                if not target_sites:
+                    target_sites = {1 + (variable_index % 10)}
+            for site_id in sorted(target_sites):
+                site = self.get_site(site_id)
+                if site and site.is_up() and site.has_variable(variable_id):
+                    site.write_variable(variable_id, transaction.commit_timestamp, value)
+                    affected_sites[variable_id].append(site_id)
+                    
         self._record_rw_edges(transaction)
         self.committed_transactions.append(transaction)
         print(f"{transaction.id} commits")
@@ -360,33 +347,83 @@ class TransactionManager:
 
         self._wakeup_waiting_transactions()
 
-    def _record_rw_edges(self, transaction: Transaction):
-        """
-        Purpose: record RW edges for SSI tracking after commit.
-        Author: Xi Wang
-        Args: transaction
-        Returns: None
-        Side effects: updates rw_edges_to adjacency sets.
-        """
-        incoming_sources = set()
+    def _register_rw_edges(self, transaction: Transaction):
+        seen = set()
+        others = list(self.transactions.values()) + self.committed_transactions
+        for other in others:
+            if not other or other.id == transaction.id:
+                continue
+            if other.id in seen:
+                continue
+            seen.add(other.id)
+            if other.status == TransactionStatus.ABORTED:
+                continue
+
+            if other.start_timestamp is not None and other.start_timestamp >= transaction.commit_timestamp:
+                continue
+
+            if set(transaction.write_set.keys()) & other.read_set:
+                self._add_rw_edge(other.id, transaction.id)
+
+    def _add_rw_edge(self, from_tx: str, to_tx: str):
+        if from_tx == to_tx:
+            return
+        self.rw_out_edges.setdefault(from_tx, set()).add(to_tx)
+        self.rw_in_edges.setdefault(to_tx, set()).add(from_tx)
+
+    def _get_incoming_committed(self, transaction: Transaction) -> Set[str]:
+        """Return committed transactions that have RW/WW edges into this transaction."""
+        incoming = set()
+        for src in self.rw_in_edges.get(transaction.id, set()):
+            if self._is_committed(src):
+                incoming.add(src)
+
+        for other in self.transactions.values():
+            if other.id == transaction.id or other.status == TransactionStatus.ABORTED:
+                continue
+            if not self._is_committed(other.id):
+                continue
+            if other.commit_timestamp and other.commit_timestamp <= transaction.start_timestamp:
+                continue
+            if set(transaction.write_set.keys()) & other.read_set:
+                incoming.add(other.id)
 
         for committed_tx in self.committed_transactions:
-            if committed_tx.commit_timestamp is None:
+            if committed_tx.id == transaction.id:
                 continue
-            if committed_tx.commit_timestamp <= transaction.start_timestamp:
+            if committed_tx.status != TransactionStatus.COMMITTED:
                 continue
+            if set(transaction.write_set.keys()) & set(committed_tx.write_set.keys()):
+                incoming.add(committed_tx.id)
 
-            # committed_tx read something transaction writes => committed_tx ->rw transaction
-            if set(transaction.write_set.keys()) & committed_tx.read_set:
-                incoming_sources.add(committed_tx.id)
+        return incoming
 
-            # transaction read something committed_tx wrote => transaction ->rw committed_tx
-            if transaction.read_set & set(committed_tx.write_set.keys()):
-                self.rw_edges_to.setdefault(committed_tx.id, set()).add(transaction.id)
+    def _is_committed(self, tx_id: str) -> bool:
+        """Check whether a transaction id refers to a committed transaction."""
+        tx = self.transactions.get(tx_id)
+        if tx and tx.status == TransactionStatus.COMMITTED:
+            return True
+        for committed_tx in self.committed_transactions:
+            if committed_tx.id == tx_id and committed_tx.status == TransactionStatus.COMMITTED:
+                return True
+        return False
 
-        if incoming_sources:
-            self.rw_edges_to.setdefault(transaction.id, set()).update(incoming_sources)
+    def _remove_edges(self, tx_id: str):
+        """Remove all RW edges involving a transaction (on abort)."""
+        self.rw_out_edges.pop(tx_id, None)
+        self.rw_in_edges.pop(tx_id, None)
+        for targets in self.rw_out_edges.values():
+            targets.discard(tx_id)
+        for sources in self.rw_in_edges.values():
+            sources.discard(tx_id)
 
+    def _last_failure_time(self, site_id: int) -> Optional[int]:
+        """Return timestamp of the last recorded failure for a site."""
+        for sid, event, ts in reversed(self.failure_history):
+            if sid == site_id and event == "down":
+                return ts
+        return None
+    
     def _abort_transaction(self, transaction: Transaction, reason: str = ""):
         """
         Purpose: abort transaction with optional reason.
@@ -400,6 +437,7 @@ class TransactionManager:
         transaction.deferred_operations.clear()
         transaction.waiting_operation = None
         transaction.waiting_for_variable = None
+        self._remove_edges(transaction.id)  # Added
 
         if reason:
             print(f"{transaction.id} aborts ({reason})")
@@ -421,12 +459,15 @@ class TransactionManager:
 
         for variable_id in transaction.write_set:
             variable_index = int(variable_id[1:])
+            targets = transaction.write_targets.get(variable_id, set())
             if variable_index % 2 == 1:
-                target_site_id = 1 + (variable_index % 10)
+                target_site_id = next(iter(targets), 1 + (variable_index % 10))
                 if not self.get_site(target_site_id).is_up():
                     return False
             else:
-                if not any(site.is_up() and site.has_variable(variable_id) for site in self.sites):
+                if not targets:
+                    return False
+                if not any(self.get_site(site_id).is_up() for site_id in targets):
                     return False
 
         return True
@@ -510,7 +551,7 @@ class TransactionManager:
                 if site_id in transaction.sites_written_to:
                     transaction.site_failed_after_write = True
 
-        self._abort_transactions_using_failed_site(site_id)
+        # self._abort_transactions_using_failed_site(site_id)
 
     def recover(self, site_id: int):
         """

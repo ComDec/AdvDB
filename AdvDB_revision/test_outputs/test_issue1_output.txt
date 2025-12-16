@@ -1,0 +1,58 @@
+======================================================================
+TEST: test_issue1
+Description: Read site, site fails/recovers, then write - should commit (Issue 1 fix)
+Result: FAILED
+======================================================================
+
+----------------------------------------
+COMMITS/ABORTS:
+----------------------------------------
+  Expected Commits: ['T1']
+  Actual Commits:   []
+  Expected Aborts:  []
+  Actual Aborts:    []
+
+----------------------------------------
+READ VALUES:
+----------------------------------------
+  Expected Reads: {'x2': 20}
+  Actual Reads:   {'x2': 20}
+
+----------------------------------------
+DUMP (Final State):
+----------------------------------------
+  Expected Dump: {'x2': 222}
+  Actual Dump:   {}
+
+----------------------------------------
+ERRORS:
+----------------------------------------
+  - Commits: expected ['T1'], got []
+  - Dump x2: expected 222, but not in dump
+
+----------------------------------------
+INPUT COMMANDS:
+----------------------------------------
+// Test Issue 1: Read site, site fails/recovers, then write same site
+// T1 reads x2 from some site, site 1 fails and recovers, then T1 writes x2
+// The write happens AFTER recovery, so T1 should commit
+begin(T1)
+R(T1,x2)
+fail(1)
+recover(1)
+W(T1,x2,222)
+end(T1)
+dump()
+
+
+----------------------------------------
+FULL OUTPUT:
+----------------------------------------
+=== Executing 7 commands from /data1/xw3763/project/playgroud/AdvDB/tests/test_issue1.txt ===
+
+T1 begins
+x2: 20
+Site 1 fails
+Site 1 recovers
+T1 stages x2=222 for sites [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+

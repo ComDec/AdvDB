@@ -1,0 +1,60 @@
+======================================================================
+TEST: test7
+Description: T2 reads initial x3=30 (snapshot isolation)
+Result: FAILED
+======================================================================
+
+----------------------------------------
+COMMITS/ABORTS:
+----------------------------------------
+  Expected Commits: ['T1', 'T2']
+  Actual Commits:   []
+  Expected Aborts:  []
+  Actual Aborts:    []
+
+----------------------------------------
+READ VALUES:
+----------------------------------------
+  Expected Reads: {'x1': 10, 'x2': 20, 'x3': 30}
+  Actual Reads:   {'x1': 10, 'x2': 20}
+
+----------------------------------------
+DUMP (Final State):
+----------------------------------------
+  Expected Dump: {'x3': 33}
+  Actual Dump:   {}
+
+----------------------------------------
+ERRORS:
+----------------------------------------
+  - Commits: expected ['T1', 'T2'], got []
+  - Read x3: expected 30, but no read found
+  - Dump x3: expected 33, but not in dump
+
+----------------------------------------
+INPUT COMMANDS:
+----------------------------------------
+// Test 7
+// T2 should read the initial version of x3 (value 30)
+begin(T1)
+begin(T2)
+R(T2,x1)
+R(T2,x2)
+W(T1,x3,33)
+end(T1)
+R(T2,x3)
+end(T2)
+dump()
+
+
+----------------------------------------
+FULL OUTPUT:
+----------------------------------------
+=== Executing 9 commands from /data1/xw3763/project/playgroud/AdvDB/tests/test7.txt ===
+
+T1 begins
+T2 begins
+x1: 10
+x2: 20
+T1 stages x3=33 for site 4
+
