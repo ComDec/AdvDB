@@ -1,5 +1,5 @@
-// 测试只读事务
-// 只读事务应该读取快照并直接提交
+// Test read-only transactions
+// Read-only transactions should read snapshot values and commit immediately
 
 begin(T1)
 W(T1, x1, 101)
