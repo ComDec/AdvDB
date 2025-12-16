@@ -77,12 +77,24 @@ class VariableCopy:
         self.is_readable = True
 
     def __str__(self):
-        """Purpose: human-readable summary. Author: Xi Wang. Args: None. Returns: str."""
+        """
+        Purpose: human-readable summary.
+        Author: Xi Wang
+        Args: None
+        Returns: str - string representation of variable copy
+        Side effects: None
+        """
         return (
             f"VariableCopy({self.variable_id}={self.value}, "
             f"replicated={self.is_replicated}, readable={self.is_readable})"
         )
 
     def __repr__(self):
-        """Purpose: debug representation. Author: Sihang Zhao. Args: None. Returns: str."""
+        """
+        Purpose: debug representation.
+        Author: Sihang Zhao
+        Args: None
+        Returns: str - debug string representation
+        Side effects: None
+        """
         return self.__str__()

@@ -370,6 +370,9 @@ class TransactionManager:
         """
         Purpose: wake waiting transactions; retry blocked read if any.
         Author: Xi Wang
+        Args: None
+        Returns: None
+        Side effects: wakes waiting transactions, retries deferred operations, may change transaction status.
         """
         for tx_id, transaction in self.transactions.items():
             if transaction.status == TransactionStatus.WAITING:
@@ -529,7 +532,7 @@ class TransactionManager:
 
     def query_state(self):
         """
-        Enhanced debug output including per-site dumps.
+        Purpose: print detailed system state for debugging including per-site dumps.
         Author: Xi Wang
         Args: None
         Returns: None

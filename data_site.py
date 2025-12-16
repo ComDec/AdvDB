@@ -111,7 +111,13 @@ class Site:
             self.variables[variable_id].write(commit_timestamp, value)
 
     def is_up(self) -> bool:
-        """Purpose: check if site is UP. Author: Sihang Zhao. Returns: bool. Side effects: None."""
+        """
+        Purpose: check if site is UP.
+        Author: Sihang Zhao
+        Args: None (uses self)
+        Returns: bool - True if site is UP, False otherwise
+        Side effects: None
+        """
         return self.status == SiteStatus.UP
 
     def dump(self) -> str:
@@ -134,9 +140,21 @@ class Site:
         return "".join(result)
 
     def __str__(self):
-        """Purpose: readable site summary. Author: Sihang Zhao. Args: None. Returns: str."""
+        """
+        Purpose: readable site summary.
+        Author: Sihang Zhao
+        Args: None
+        Returns: str - string representation of site
+        Side effects: None
+        """
         return f"Site({self.site_id}, status={self.status.value}, vars={len(self.variables)})"
 
     def __repr__(self):
-        """Purpose: debug representation. Author: Xi Wang. Args: None. Returns: str."""
+        """
+        Purpose: debug representation.
+        Author: Xi Wang
+        Args: None
+        Returns: str - debug string representation
+        Side effects: None
+        """
         return self.__str__()

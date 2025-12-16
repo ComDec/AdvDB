@@ -57,6 +57,50 @@ python main.py
 
 然后逐行输入命令。
 
+## ReproZip 打包（提交所需）
+
+为了实现跨架构的可重现性，使用 ReproZip 打包项目：
+
+### 快速开始（Linux）
+```bash
+# 安装 reprozip
+conda install -c conda-forge reprozip reprounzip
+# 或: pip install reprozip reprounzip
+
+# 自动化打包
+./pack_with_reprozip.sh test_basic.txt
+
+# 手动打包
+reprozip trace python3 main.py test_basic.txt
+reprozip pack repcrec.rpz
+```
+
+### 使用 Docker（macOS/Windows）
+```bash
+# 构建包含 reprozip 的 Docker 镜像
+docker build -t repcrec-pack .
+
+# 在容器内运行打包
+docker run -it -v $(pwd):/app repcrec-pack bash
+# 容器内:
+reprozip trace python3 main.py test_basic.txt
+reprozip pack repcrec.rpz
+```
+
+### 解包和运行
+```bash
+# 目录解包
+reprounzip directory setup repcrec.rpz run_dir
+reprounzip directory run run_dir python3 main.py test_basic.txt
+
+# Docker 解包
+reprounzip dockerfile repcrec.rpz
+docker build -t repcrec:latest .
+docker run --rm repcrec:latest python3 main.py test_basic.txt
+```
+
+**详细说明请参见 `REPROZIP_SETUP.md`。**
+
 ## 支持的命令
 
 ### 事务操作

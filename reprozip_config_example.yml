@@ -1,0 +1,34 @@
+# Example ReproZip configuration file
+# This shows what files/directories to include/exclude
+# Edit with: reprozip edit config.yml
+
+# Include all Python source files
+packages:
+  - name: python3
+    version: ">=3.9"
+  
+# Include project files
+files:
+  - path: "*.py"
+    category: source
+  - path: "test_*.txt"
+    category: input
+  - path: "*.sh"
+    category: script
+  - path: "README.md"
+    category: documentation
+
+# Exclude unnecessary files
+exclude:
+  - "__pycache__/"
+  - "*.pyc"
+  - ".git/"
+  - ".reprozip-trace/"
+  - "*.rpz"
+  - ".DS_Store"
+  - "*.log"
+  - "*.tmp"
+
+# Note: This is just an example. The actual config.yml is generated
+# automatically by 'reprozip trace' and can be edited with 'reprozip edit'
+
