@@ -188,7 +188,7 @@ class TransactionManager:
 
         # staging only
         transaction.write(variable_id, value)
-        # 记录本次写会影响到的站点（用于站点失败后的提交时检查）
+        # track target sites for this write (used to detect single-site failures)
         target_sites = self._target_sites_for_write(variable_id)
         for site_id in target_sites:
             transaction.add_site_written(site_id)
@@ -212,18 +212,22 @@ class TransactionManager:
             return
 
         if transaction.status == TransactionStatus.WAITING:
-            # 等待中的事务尝试提交时，直接中止
+            # a waiting transaction cannot commit; abort immediately
             self._abort_transaction(transaction, "cannot commit while waiting")
             return
+
+        # if a non-replicated variable's only site is down, commit must fail
+        for variable_id in transaction.write_set.keys():
+            variable_index = int(variable_id[1:])
+            if variable_index % 2 == 1:
+                target_site_id = 1 + (variable_index % 10)
+                if not self.get_site(target_site_id).is_up():
+                    self._abort_transaction(transaction, f"site {target_site_id} down for {variable_id}")
+                    return
 
         # read-only commits immediately
         if transaction.is_read_only:
             self._commit_transaction(transaction)
-            return
-
-        # 写入过的站点若在提交前失败，则必须中止
-        if transaction.site_failed_after_write:
-            self._abort_transaction(transaction, "site failed after write")
             return
 
         # WW conflict (First Committer Wins)
@@ -236,7 +240,7 @@ class TransactionManager:
             self._abort_transaction(transaction, "RW conflict (SSI)")
             return
 
-        # 所有检查通过，提交事务
+        # all checks passed, commit transaction
         self._commit_transaction(transaction)
 
     # ==================== SSI validation ====================
@@ -257,9 +261,9 @@ class TransactionManager:
                     committed_tx.write_set.keys()
                 )
                 if write_intersection:
-                    return True  # 发现WW冲突
+                    return True  # found WW conflict
 
-        return False  # 无冲突
+        return False  # no conflict
 
     def _check_rw_conflict(self, transaction: Transaction) -> bool:
         """
@@ -270,19 +274,22 @@ class TransactionManager:
         Side effects: None.
         """
         for committed_tx in self.committed_transactions:
+            # skip read-only transactions; they do not create dangerous structures
+            if committed_tx.is_read_only:
+                continue
             # only commits after T started
             if committed_tx.commit_timestamp > transaction.start_timestamp:
                 # check 1: committed_tx wrote something T read
                 read_write_intersection = transaction.read_set & set(committed_tx.write_set.keys())
                 if read_write_intersection:
-                    return True  # 发现RW冲突
+                    return True  # found RW conflict
 
                 # check 2: committed_tx read something T wrote
                 write_read_intersection = set(transaction.write_set.keys()) & committed_tx.read_set
                 if write_read_intersection:
-                    return True  # 发现RW冲突
+                    return True  # found RW conflict
 
-        return False  # 无冲突
+        return False  # no conflict
 
     # ==================== Commit & abort ====================
 
@@ -300,14 +307,14 @@ class TransactionManager:
         for variable_id, value in transaction.write_set.items():
             variable_index = int(variable_id[1:])
 
-            if variable_index % 2 == 1:  # 非复制变量
+            if variable_index % 2 == 1:  # non-replicated variable
                 target_site_id = 1 + (variable_index % 10)
                 site = self.get_site(target_site_id)
 
                 if site.is_up():
                     site.write_variable(variable_id, transaction.commit_timestamp, value)
 
-            else:  # 复制变量，写入所有可用站点
+            else:  # replicated variable, write to all available sites
                 for site in self.sites:
                     if site.is_up() and site.has_variable(variable_id):
                         site.write_variable(variable_id, transaction.commit_timestamp, value)
@@ -335,7 +342,7 @@ class TransactionManager:
         else:
             print(f"{transaction.id} aborts")
 
-        # 唤醒等待中的事务
+        # wake waiting transactions
         self._wakeup_waiting_transactions()
 
     def _target_sites_for_write(self, variable_id: str) -> List[int]:
@@ -374,11 +381,11 @@ class TransactionManager:
         for tx_id, transaction in self.transactions.items():
             if transaction.status == TransactionStatus.WAITING:
                 transaction.set_active()
-                # 重新尝试读取之前等待的变量
+                # retry the previously blocked read if any
                 if transaction.waiting_for_variable:
                     self.read(tx_id, transaction.waiting_for_variable)
 
-    # ==================== 站点故障与恢复 ====================
+    # ==================== Site failure & recovery ====================
 
     def fail(self, site_id: int):
         """
@@ -391,18 +398,24 @@ class TransactionManager:
         site = self.get_site(site_id)
         site.fail()
 
-        # 记录故障历史
+        # log failure history
         self.failure_history.append((site_id, "down", self.current_timestamp))
 
         print(f"Site {site_id} fails")
 
-        # 标记写过该站点的事务在提交时必须中止
+        # flag transactions that wrote to this site (single-copy odd variable) for abort at commit
         for transaction in self.transactions.values():
             if transaction.status in [TransactionStatus.ACTIVE, TransactionStatus.WAITING]:
-                if site_id in transaction.sites_written_to:
-                    transaction.site_failed_after_write = True
+                for var_id in transaction.write_set.keys():
+                    var_index = int(var_id[1:])
+                    # only mark transactions that wrote non-replicated variables on this site
+                    if var_index % 2 == 1:
+                        target_site_id = 1 + (var_index % 10)
+                        if target_site_id == site_id:
+                            transaction.site_failed_after_write = True
+                            break
 
-        # 中止所有访问了该站点的活跃事务
+        # abort active/waiting transactions that accessed the failed site's odd variables
         self._abort_transactions_using_failed_site(site_id)
 
     def recover(self, site_id: int):
@@ -416,12 +429,12 @@ class TransactionManager:
         site = self.get_site(site_id)
         site.recover()
 
-        # 记录恢复历史
+        # log recovery history
         self.failure_history.append((site_id, "up", self.current_timestamp))
 
         print(f"Site {site_id} recovers")
 
-        # 唤醒等待中的事务
+        # wake waiting transactions
         self._wakeup_waiting_transactions()
 
     def _abort_transactions_using_failed_site(self, site_id: int):
@@ -436,10 +449,10 @@ class TransactionManager:
 
         for tx_id, transaction in self.transactions.items():
             if transaction.status in [TransactionStatus.ACTIVE, TransactionStatus.WAITING]:
-                # 检查事务是否读取了该站点上的非复制变量
+                # check whether the transaction read a non-replicated variable on this site
                 for var_id in transaction.read_set:
                     var_index = int(var_id[1:])
-                    if var_index % 2 == 1:  # 非复制变量
+                    if var_index % 2 == 1:  # non-replicated variable
                         target_site_id = 1 + (var_index % 10)
                         if target_site_id == site_id:
                             transactions_to_abort.append(transaction)
@@ -448,7 +461,7 @@ class TransactionManager:
         for transaction in transactions_to_abort:
             self._abort_transaction(transaction, f"site {site_id} failed")
 
-    # ==================== Dump操作 ====================
+    # ==================== Dump operations ====================
 
     def dump(self):
         """
@@ -489,7 +502,7 @@ class TransactionManager:
         for result in results:
             print(result)
 
-    # ==================== 清理和状态 ====================
+    # ==================== Cleanup & status ====================
 
     def cleanup_finished_transactions(self):
         """

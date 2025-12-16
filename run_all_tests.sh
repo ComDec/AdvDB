@@ -1,15 +1,15 @@
 #!/bin/bash
-# 运行所有测试用例的脚本
+# Run all test cases
 
 echo "========================================"
-echo "RepCRec - 运行所有测试用例"
+echo "RepCRec - Run all test cases"
 echo "========================================"
 echo ""
 
-# 获取所有测试文件
+# collect all test files
 test_files=(test_*.txt)
 
-# 运行每个测试
+# run each test
 for test_file in "${test_files[@]}"; do
     echo "----------------------------------------"
     echo "运行: $test_file"
@@ -20,5 +20,5 @@ for test_file in "${test_files[@]}"; do
 done
 
 echo "========================================"
-echo "所有测试完成！"
+echo "All tests completed!"
 echo "========================================"

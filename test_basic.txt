@@ -1,5 +1,5 @@
-// 基础测试：简单的读写操作
-// 测试MVCC和快照隔离
+// Basic test: simple read/write operations
+// Validate MVCC and snapshot isolation
 
 begin(T1)
 begin(T2)

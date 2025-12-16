@@ -1,5 +1,5 @@
-// 测试复制变量的可用副本算法
-// 所有偶数变量应该在所有站点上复制
+// Test available-copies algorithm for replicated variables
+// All even variables should be replicated across every site
 
 begin(T1)
 W(T1, x2, 202)

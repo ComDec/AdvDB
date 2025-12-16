@@ -1,6 +1,6 @@
-// 测试RW冲突（读-写冲突）
-// T1读取x1，T2写入x1并提交，然后T1尝试写入x2并提交
-// 这应该触发SSI的RW冲突检测
+// Test RW conflict (read-write conflict)
+// T1 reads x1, T2 writes x1 then commits, then T1 tries to write x2 and commit
+// Should trigger SSI RW conflict detection
 
 begin(T1)
 begin(T2)

@@ -1,5 +1,5 @@
-// 测试站点故障和恢复
-// 测试站点失败时的等待机制和恢复后的陈旧标志
+// Test site failure and recovery
+// Validate waiting behavior during failure and stale-flag after recovery
 
 begin(T1)
 W(T1, x1, 101)

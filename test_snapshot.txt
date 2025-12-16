@@ -1,5 +1,5 @@
-// 测试MVCC快照读取
-// T2应该读取T1开始时的快照，即使T1后来提交了新值
+// Test MVCC snapshot read
+// T2 should read the snapshot at T1's start even after T1 commits a new value
 
 begin(T1)
 begin(T2)

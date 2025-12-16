@@ -26,10 +26,10 @@ class VariableCopy:
         Side effects: initializes MVCC history and readability.
         """
         self.variable_id = variable_id
-        self.value = initial_value  # 当前值，用于dump()操作
-        self.version_history: List[Tuple[int, int]] = [(0, initial_value)]  # MVCC版本历史
+        self.value = initial_value  # current value, used by dump()
+        self.version_history: List[Tuple[int, int]] = [(0, initial_value)]  # MVCC version history
         self.is_replicated = is_replicated
-        self.is_readable = True  # 默认为可读
+        self.is_readable = True  # readable by default
 
     def write(self, commit_timestamp: int, new_value: int):
         """
@@ -43,7 +43,7 @@ class VariableCopy:
         """
         self.value = new_value
         self.version_history.append((commit_timestamp, new_value))
-        # 写入后，该副本变为可读（恢复算法的关键）
+        # after a write, the replica becomes readable (stale-flag rule)
         self.is_readable = True
 
     def read_snapshot(self, snapshot_timestamp: int) -> Tuple[int, int]:
@@ -56,7 +56,7 @@ class VariableCopy:
             (value, commit_ts): Latest value and its commit ts < snapshot_timestamp.
         Side effects: None.
         """
-        snapshot_value = self.version_history[0][1]  # 初始值
+        snapshot_value = self.version_history[0][1]  # initial value
         snapshot_commit_ts = self.version_history[0][0]
 
         for commit_ts, value in self.version_history:
@@ -64,7 +64,7 @@ class VariableCopy:
                 snapshot_value = value
                 snapshot_commit_ts = commit_ts
             else:
-                break  # 已经找到晚于快照时间的版本，停止搜索
+                break  # stop once we hit a version newer than the snapshot time
 
         return snapshot_value, snapshot_commit_ts
 
@@ -75,6 +75,19 @@ class VariableCopy:
     def set_readable(self):
         """Purpose: mark replica readable. Author: Sihang Zhao. Args: None. Returns: None. Side effects: is_readable=True."""
         self.is_readable = True
+
+    def reset_snapshot_history(self):
+        """
+        Purpose: drop historical versions on site failure while keeping latest value.
+        Author: Sihang Zhao
+        Args: None
+        Returns: None
+        Side effects: trims version_history to the newest committed version.
+        """
+        if not self.version_history:
+            return
+        latest_commit_ts, latest_value = self.version_history[-1]
+        self.version_history = [(latest_commit_ts, latest_value)]
 
     def __str__(self):
         """Purpose: human-readable summary. Author: Xi Wang. Args: None. Returns: str."""
