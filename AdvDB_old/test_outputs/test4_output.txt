@@ -1,0 +1,60 @@
+======================================================================
+TEST: test4
+Description: T1 aborts (site 2 failed after write), T2 ok
+Result: PASSED
+======================================================================
+
+----------------------------------------
+COMMITS/ABORTS:
+----------------------------------------
+  Expected Commits: ['T2']
+  Actual Commits:   ['T2']
+  Expected Aborts:  ['T1']
+  Actual Aborts:    ['T1']
+
+----------------------------------------
+READ VALUES:
+----------------------------------------
+  Expected Reads: {'x3': 30, 'x5': 50}
+  Actual Reads:   {'x3': 30, 'x5': 50}
+
+----------------------------------------
+INPUT COMMANDS:
+----------------------------------------
+// Test 4
+// T1 aborts, since site 2 died after T1 accessed it. T2 ok.
+begin(T1)
+begin(T2)
+W(T1,x1,512)
+fail(2)
+W(T2,x8,88)
+R(T2,x3)
+R(T1,x5)
+end(T2)
+recover(2)
+end(T1)
+
+
+----------------------------------------
+FULL OUTPUT:
+----------------------------------------
+=== Executing 10 commands from /data1/xw3763/project/playgroud/AdvDB/tests/test4.txt ===
+
+T1 begins
+T2 begins
+T1 stages x1=512 for site 2
+Site 2 fails
+T2 stages x8=88 for sites [1, 3, 4, 5, 6, 7, 8, 9, 10]
+x3: 30
+x5: 50
+T2 commits
+T2 wrote x8 to sites [1, 3, 4, 5, 6, 7, 8, 9, 10]
+Site 2 recovers
+T1 aborts (site failed after write)
+
+=== Execution completed ===
+
+Final statistics:
+  Committed transactions: 1
+  Aborted transactions: 1
+

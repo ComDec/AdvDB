@@ -19,7 +19,18 @@ Each line advances logical time by one tick. Reads print `x#: value`, commits/ab
 - Or individually: `python main.py test_basic.txt` (others: `test_ww_conflict.txt`, `test_rw_conflict.txt`, `test_snapshot.txt`, `test_site_failure.txt`, `test_replicated.txt`, `test_readonly.txt`, `test_comprehensive.txt`).
 - To capture a reproducible run, ensure you are in the `base` environment (`mamba activate base`) with `reprozip` installed, then run tests under `reprozip trace ...` as shown above.
 
+### ReproZip usage (full suite)
+- Install tools if needed: `pip install --user reprozip reprounzip` (ensure `~/.local/bin` is on PATH).
+- Trace + pack the full public suite:  
+  `reprozip trace --overwrite python run_public_tests.py`  
+  `reprozip pack repcrec_latest.rpz`
+- Replay elsewhere (no source tree changes required):  
+  `reprounzip directory setup repcrec_latest.rpz run_dir`  
+  `reprounzip directory run run_dir`
+- The repo already contains `repcrec_latest.rpz` built from a clean run of `run_public_tests.py`.
+
 ## Notes
 - Data distribution: x1..x20; odd indexes live on a single site `1 + (i mod 10)`, even indexes on all 10 sites; initial value `10*i`.
-- Recovery: non-replicated copies are readable immediately after recovery; replicated copies stay stale until a new commit refreshes them.
+- Writes: replicated writes are staged on the sites that were up when the write was issued and are only applied to that set if those sites remain up at commit (recovered sites stay stale until a later commit touches them).
+- Recovery: non-replicated copies are readable immediately after recovery; replicated copies stay stale until a new commit refreshes them for post-recovery transactions, but transactions that started before the failure can still read their snapshot version once the site is back.
 - SSI checks: first-committer-wins plus dangerous-structure detection with RW antidependency chains; transactions that wrote to a site abort if that site fails before commit.

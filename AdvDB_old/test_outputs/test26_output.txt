@@ -1,0 +1,55 @@
+======================================================================
+TEST: test26
+Description: Read-only transactions always commit
+Result: PASSED
+======================================================================
+
+----------------------------------------
+COMMITS/ABORTS:
+----------------------------------------
+  Expected Commits: ['T1', 'T2']
+  Actual Commits:   ['T1', 'T2']
+  Expected Aborts:  []
+  Actual Aborts:    []
+
+----------------------------------------
+READ VALUES:
+----------------------------------------
+  Expected Reads: {'x1': 10, 'x2': 20, 'x3': 30, 'x4': 40}
+  Actual Reads:   {'x1': 10, 'x2': 20, 'x3': 30, 'x4': 40}
+
+----------------------------------------
+INPUT COMMANDS:
+----------------------------------------
+// Test 26: Simple read-only transactions always commit
+// T1 and T2 both only read, should both commit
+begin(T1)
+begin(T2)
+R(T1,x1)
+R(T1,x2)
+R(T2,x3)
+R(T2,x4)
+end(T1)
+end(T2)
+
+
+----------------------------------------
+FULL OUTPUT:
+----------------------------------------
+=== Executing 8 commands from /data1/xw3763/project/playgroud/AdvDB/tests/test26.txt ===
+
+T1 begins
+T2 begins
+x1: 10
+x2: 20
+x3: 30
+x4: 40
+T1 commits
+T2 commits
+
+=== Execution completed ===
+
+Final statistics:
+  Committed transactions: 2
+  Aborted transactions: 0
+

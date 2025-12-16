@@ -1,0 +1,3 @@
+[submodule "reprozip"]
+	path = reprozip
+	url = https://github.com/VIDA-NYU/reprozip.git

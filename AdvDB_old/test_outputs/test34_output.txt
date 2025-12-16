@@ -1,0 +1,74 @@
+======================================================================
+TEST: test34
+Description: Write makes replicated var readable after recovery
+Result: PASSED
+======================================================================
+
+----------------------------------------
+COMMITS/ABORTS:
+----------------------------------------
+  Expected Commits: ['T1', 'T2']
+  Actual Commits:   ['T1', 'T2']
+  Expected Aborts:  []
+  Actual Aborts:    []
+
+----------------------------------------
+READ VALUES:
+----------------------------------------
+  Expected Reads: {'x2': 222}
+  Actual Reads:   {'x2': 222}
+
+----------------------------------------
+DUMP (Final State):
+----------------------------------------
+  Expected Dump: {'x2': 222}
+  Actual Dump:   {'x2': 222, 'x4': 40, 'x6': 60, 'x8': 80, 'x10': 100, 'x12': 120, 'x14': 140, 'x16': 160, 'x18': 180, 'x20': 200, 'x1': 10, 'x11': 110, 'x3': 30, 'x13': 130, 'x5': 50, 'x15': 150, 'x7': 70, 'x17': 170, 'x9': 90, 'x19': 190}
+
+----------------------------------------
+INPUT COMMANDS:
+----------------------------------------
+// Test 34: Write makes replicated variable readable after recovery
+// Site 1 fails and recovers. T1 writes x2 to site 1.
+// T2 begins after T1 commits and can read x2 from site 1.
+fail(1)
+recover(1)
+begin(T1)
+W(T1,x2,222)
+end(T1)
+begin(T2)
+R(T2,x2)
+end(T2)
+dump()
+
+
+----------------------------------------
+FULL OUTPUT:
+----------------------------------------
+=== Executing 9 commands from /data1/xw3763/project/playgroud/AdvDB/tests/test34.txt ===
+
+Site 1 fails
+Site 1 recovers
+T1 begins
+T1 stages x2=222 for sites [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+T1 commits
+T1 wrote x2 to sites [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+T2 begins
+x2: 222
+T2 commits
+site 1 - x2: 222 x4: 40 x6: 60 x8: 80 x10: 100 x12: 120 x14: 140 x16: 160 x18: 180 x20: 200
+site 2 - x1: 10 x2: 222 x4: 40 x6: 60 x8: 80 x10: 100 x11: 110 x12: 120 x14: 140 x16: 160 x18: 180 x20: 200
+site 3 - x2: 222 x4: 40 x6: 60 x8: 80 x10: 100 x12: 120 x14: 140 x16: 160 x18: 180 x20: 200
+site 4 - x2: 222 x3: 30 x4: 40 x6: 60 x8: 80 x10: 100 x12: 120 x13: 130 x14: 140 x16: 160 x18: 180 x20: 200
+site 5 - x2: 222 x4: 40 x6: 60 x8: 80 x10: 100 x12: 120 x14: 140 x16: 160 x18: 180 x20: 200
+site 6 - x2: 222 x4: 40 x5: 50 x6: 60 x8: 80 x10: 100 x12: 120 x14: 140 x15: 150 x16: 160 x18: 180 x20: 200
+site 7 - x2: 222 x4: 40 x6: 60 x8: 80 x10: 100 x12: 120 x14: 140 x16: 160 x18: 180 x20: 200
+site 8 - x2: 222 x4: 40 x6: 60 x7: 70 x8: 80 x10: 100 x12: 120 x14: 140 x16: 160 x17: 170 x18: 180 x20: 200
+site 9 - x2: 222 x4: 40 x6: 60 x8: 80 x10: 100 x12: 120 x14: 140 x16: 160 x18: 180 x20: 200
+site 10 - x2: 222 x4: 40 x6: 60 x8: 80 x9: 90 x10: 100 x12: 120 x14: 140 x16: 160 x18: 180 x19: 190 x20: 200
+
+=== Execution completed ===
+
+Final statistics:
+  Committed transactions: 2
+  Aborted transactions: 0
+

@@ -1,0 +1,54 @@
+======================================================================
+TEST: test11
+Description: All should commit
+Result: PASSED
+======================================================================
+
+----------------------------------------
+COMMITS/ABORTS:
+----------------------------------------
+  Expected Commits: ['T1', 'T2']
+  Actual Commits:   ['T1', 'T2']
+  Expected Aborts:  []
+  Actual Aborts:    []
+
+----------------------------------------
+READ VALUES:
+----------------------------------------
+  Expected Reads: {'x2': 20}
+  Actual Reads:   {'x2': 20}
+
+----------------------------------------
+INPUT COMMANDS:
+----------------------------------------
+// Test 11
+// All should commit
+begin(T1)
+begin(T2)
+R(T1,x2)
+R(T2,x2)
+W(T2,x2,10)
+end(T1)
+end(T2)
+
+
+----------------------------------------
+FULL OUTPUT:
+----------------------------------------
+=== Executing 7 commands from /data1/xw3763/project/playgroud/AdvDB/tests/test11.txt ===
+
+T1 begins
+T2 begins
+x2: 20
+x2: 20
+T2 stages x2=10 for sites [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+T1 commits
+T2 commits
+T2 wrote x2 to sites [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+
+=== Execution completed ===
+
+Final statistics:
+  Committed transactions: 2
+  Aborted transactions: 0
+

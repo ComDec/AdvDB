@@ -1,9 +1,0 @@
-// Write-write conflict: T1 commits first, T2 should abort
-
-begin(T1)
-begin(T2)
-W(T1, x1, 100)
-W(T2, x1, 200)
-end(T1)
-end(T2)
-dump()

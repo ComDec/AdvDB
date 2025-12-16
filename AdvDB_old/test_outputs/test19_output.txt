@@ -1,0 +1,88 @@
+======================================================================
+TEST: test19
+Description: T3 aborts (site 4 failed), others commit
+Result: PASSED
+======================================================================
+
+----------------------------------------
+COMMITS/ABORTS:
+----------------------------------------
+  Expected Commits: ['T1', 'T2', 'T4', 'T5']
+  Actual Commits:   ['T5', 'T4', 'T2', 'T1']
+  Expected Aborts:  ['T3']
+  Actual Aborts:    ['T3']
+
+----------------------------------------
+READ VALUES:
+----------------------------------------
+  Expected Reads: {}
+  Actual Reads:   {'x4': 40, 'x5': 50, 'x6': 60, 'x2': 20}
+
+----------------------------------------
+INPUT COMMANDS:
+----------------------------------------
+// Test 19
+// T3 fails because site 4 fails (T3 wrote x3 which is at site 4)
+// All others succeed.
+begin(T1)
+begin(T2)
+begin(T3)
+begin(T4)
+begin(T5)
+W(T3,x3,300)
+fail(4)
+recover(4)
+R(T4,x4)
+R(T5,x5)
+R(T1,x6)
+R(T2,x2)
+W(T1,x2,10)
+W(T2,x3,20)
+W(T3,x4,30)
+W(T5,x1,50)
+end(T5)
+W(T4,x5,40)
+end(T4)
+end(T3)
+end(T2)
+end(T1)
+
+
+----------------------------------------
+FULL OUTPUT:
+----------------------------------------
+=== Executing 22 commands from /data1/xw3763/project/playgroud/AdvDB/tests/test19.txt ===
+
+T1 begins
+T2 begins
+T3 begins
+T4 begins
+T5 begins
+T3 stages x3=300 for site 4
+Site 4 fails
+Site 4 recovers
+x4: 40
+x5: 50
+x6: 60
+x2: 20
+T1 stages x2=10 for sites [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+T2 stages x3=20 for site 4
+T3 stages x4=30 for sites [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+T5 stages x1=50 for site 2
+T5 commits
+T5 wrote x1 to sites [2]
+T4 stages x5=40 for site 6
+T4 commits
+T4 wrote x5 to sites [6]
+T3 aborts (site failed after write)
+T2 commits
+T2 wrote x3 to sites [4]
+T1 commits
+T1 wrote x2 to sites [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+
+=== Execution completed ===
+
+Final statistics:
+  Committed transactions: 4
+  Aborted transactions: 1
+

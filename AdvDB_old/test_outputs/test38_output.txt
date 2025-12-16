@@ -1,0 +1,56 @@
+======================================================================
+TEST: test38
+Description: Site fails after read (not write) - still commits
+Result: FAILED
+======================================================================
+
+----------------------------------------
+COMMITS/ABORTS:
+----------------------------------------
+  Expected Commits: ['T1']
+  Actual Commits:   []
+  Expected Aborts:  []
+  Actual Aborts:    ['T1', 'T1']
+
+----------------------------------------
+READ VALUES:
+----------------------------------------
+  Expected Reads: {'x1': 10}
+  Actual Reads:   {'x1': 10}
+
+----------------------------------------
+ERRORS:
+----------------------------------------
+  - Commits: expected ['T1'], got []
+  - Aborts: expected [], got ['T1', 'T1']
+
+----------------------------------------
+INPUT COMMANDS:
+----------------------------------------
+// Test 38: Site fails after read (not write) - transaction still commits
+// T1 reads from site 2, then site 2 fails.
+// Available copies abort rule only applies to writes, not reads.
+// T1 should commit.
+begin(T1)
+R(T1,x1)
+fail(2)
+end(T1)
+
+
+----------------------------------------
+FULL OUTPUT:
+----------------------------------------
+=== Executing 4 commands from /data1/xw3763/project/playgroud/AdvDB/tests/test38.txt ===
+
+T1 begins
+x1: 10
+Site 2 fails
+T1 aborts (site 2 failed)
+T1 aborts (already aborted)
+
+=== Execution completed ===
+
+Final statistics:
+  Committed transactions: 0
+  Aborted transactions: 1
+
