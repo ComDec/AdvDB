@@ -1,0 +1,121 @@
+diff --git a/transaction_manager.py b/transaction_manager.py
+index 152b0f1..a6eee04 100644
+--- a/transaction_manager.py
++++ b/transaction_manager.py
+@@ -262,6 +262,12 @@ class TransactionManager:
+         if self._check_dangerous_structure(transaction):
+             self._abort_transaction(transaction, "SSI dangerous structure")
+             return
++        
++        # WW conflict via RW chain (T -> A -> B, where T and B write same variable)
++        if self._check_ww_via_rw_chain(transaction):
++            self._abort_transaction(transaction, "WW conflict via RW chain")
++            return
++        
+         # if a non-replicated variable's only site is down, commit must fail
+         for variable_id in transaction.write_set.keys():
+             variable_index = int(variable_id[1:])
+@@ -296,13 +302,18 @@ class TransactionManager:
+ 
+     def _check_dangerous_structure(self, transaction: Transaction) -> bool:
+         """
+-        Purpose: detect two consecutive RW edges (SSI dangerous structure).
++        Purpose: detect SSI dangerous structure (transaction has both incoming and outgoing RW edges).
+         Author: Sihang Zhao
+         Args: transaction
+         Returns: True if conflict => abort, else False.
+         Side effects: None.
++        
++        SSI dangerous structure: T has both:
++        - Incoming RW edge: some committed A read a variable that T writes, A.commit_ts > T.start_ts
++        - Outgoing RW edge: T read a variable that some committed B wrote, B.commit_ts > T.start_ts
+         """
+-        incoming_sources = set()
++        has_incoming_edge = False
++        has_outgoing_edge = False
+ 
+         for committed_tx in self.committed_transactions:
+             if committed_tx.commit_timestamp is None:
+@@ -310,16 +321,58 @@ class TransactionManager:
+             if committed_tx.commit_timestamp <= transaction.start_timestamp:
+                 continue
+ 
+-            # committed_tx read something transaction writes => committed_tx ->rw transaction
++            # Incoming edge: committed_tx read something transaction writes
++            # => committed_tx ->rw transaction
+             if set(transaction.write_set.keys()) & committed_tx.read_set:
+-                incoming_sources.add(committed_tx.id)
++                has_incoming_edge = True
+ 
+-        for source in incoming_sources:
+-            if self.rw_edges_to.get(source):
++            # Outgoing edge: transaction read something committed_tx wrote
++            # => transaction ->rw committed_tx
++            if transaction.read_set & set(committed_tx.write_set.keys()):
++                has_outgoing_edge = True
++
++            # Early exit if both edges found
++            if has_incoming_edge and has_outgoing_edge:
+                 return True
+ 
+-        return False
++        return False        
+ 
++    def _check_ww_via_rw_chain(self, transaction: Transaction) -> bool:
++        """
++        Purpose: detect WW conflict via RW chain (T -> A -> B, where T and B write same variable).
++        Author: Xi Wang
++        Args: transaction
++        Returns: True if conflict => abort, else False.
++        Side effects: None.
++        
++        This detects an implicit cycle where:
++        - T has outgoing RW edge to A (T read something A wrote, A.commit_ts > T.start_ts)
++        - A has outgoing RW edge to B (A read something B wrote, B.commit_ts > A.start_ts)
++        - T and B both write the same variable (WW relationship)
++        """
++        # Find T's direct outgoing targets
++        outgoing_targets = []
++        for committed_tx in self.committed_transactions:
++            if committed_tx.commit_timestamp is None:
++                continue
++            if committed_tx.commit_timestamp <= transaction.start_timestamp:
++                continue
++            if transaction.read_set & set(committed_tx.write_set.keys()):
++                outgoing_targets.append(committed_tx)
++
++        # For each outgoing target A, check A's outgoing targets
++        for A in outgoing_targets:
++            for B in self.committed_transactions:
++                if B.commit_timestamp is None:
++                    continue
++                if B.commit_timestamp <= A.start_timestamp:
++                    continue
++                # Check if A -> B exists (A read something B wrote)
++                if A.read_set & set(B.write_set.keys()):
++                    # Check if T and B write the same variable (WW conflict)
++                    if set(B.write_set.keys()) & set(transaction.write_set.keys()):
++                        return True
++        return False
+     # ==================== Commit & abort ====================
+ 
+     def _commit_transaction(self, transaction: Transaction):
+@@ -496,7 +549,8 @@ class TransactionManager:
+         Author: Xi Wang
+         Args: site_id (1-10)
+         Returns: None
+-        Side effects: marks site DOWN, logs failure, flags transactions for abort, aborts readers of odd vars on that site.
++        Side effects: marks site DOWN, logs failure, flags transactions that wrote to this site for abort.
++        Note: Reading from a site that later fails does NOT cause abort (only writes do).
+         """
+         site = self.get_site(site_id)
+         site.fail()
+@@ -510,8 +564,6 @@ class TransactionManager:
+                 if site_id in transaction.sites_written_to:
+                     transaction.site_failed_after_write = True
+ 
+-        self._abort_transactions_using_failed_site(site_id)
+-
+     def recover(self, site_id: int):
+         """
+         Purpose: handle site recovery with stale-flag algorithm.
