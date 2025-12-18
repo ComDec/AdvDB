@@ -1,0 +1,15 @@
+// Replicated variables use available-copies; even indexes replicated everywhere
+
+begin(T1)
+W(T1, x2, 202)
+W(T1, x4, 204)
+W(T1, x6, 206)
+end(T1)
+dump()
+fail(1)
+fail(2)
+begin(T2)
+R(T2, x2)
+R(T2, x4)
+end(T2)
+dump()

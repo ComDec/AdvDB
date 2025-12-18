@@ -1,0 +1,39 @@
+// Comprehensive mix: concurrency, site failure, recovery, conflicts
+
+// Initialize data
+begin(T1)
+W(T1, x1, 111)
+W(T1, x2, 122)
+W(T1, x3, 133)
+W(T1, x4, 144)
+end(T1)
+dump()
+
+// Concurrent transactions
+begin(T2)
+begin(T3)
+R(T2, x1)
+R(T3, x2)
+W(T2, x3, 233)
+W(T3, x4, 344)
+end(T2)
+end(T3)
+
+// Site failures
+fail(1)
+fail(2)
+begin(T4)
+W(T4, x5, 155)
+end(T4)
+
+// Recover sites
+recover(1)
+recover(2)
+begin(T5)
+R(T5, x1)
+R(T5, x2)
+W(T5, x6, 166)
+end(T5)
+
+// Final dump
+dump()
