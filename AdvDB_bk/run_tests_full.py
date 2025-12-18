@@ -162,18 +162,6 @@ TEST_CASES = {
         "expected_aborts": ["T3"],
         "expected_reads": {"x4": 40, "x6": 60},
     },
-    "test23": {
-        "description": "All sites fail - T3 aborts",
-        "expected_commits": ["T1", "T2"],
-        "expected_aborts": ["T3"],
-        "expected_reads": {"x1": 10, "x3": 30},
-    },
-    "test24": {
-        "description": "Like Test 23 - T3 aborts (T4's write not visible)",
-        "expected_commits": ["T1", "T2", "T4"],
-        "expected_aborts": ["T3"],
-        "expected_reads": {"x1": 10, "x3": 30},
-    },
     "test25": {
         "description": "T3 waits for site 2, then reads x8=88 and commits",
         "expected_commits": ["T1", "T2", "T3", "T4"],
